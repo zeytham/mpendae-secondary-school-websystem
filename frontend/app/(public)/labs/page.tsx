@@ -207,7 +207,7 @@ export default function LabsPage() {
           <div style={{ position: 'absolute', left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, transparent, rgba(0,255,65,.4), transparent)', animation: 'scanLine 4s linear infinite' }} />
         </motion.div>
 
-        <motion.div style={{ y: heroY }} className="site-container" style2={{ position: 'relative', zIndex: 1 }}>
+        <motion.div style={{ y: heroY, position: 'relative', zIndex: 1 }} className="site-container">
           <div className="site-container" style={{ position: 'relative', zIndex: 1, paddingTop: 'calc(var(--nav-h) + var(--announce-h) + 4rem)', paddingBottom: '6rem' }}>
 
             <Link href="/academics"

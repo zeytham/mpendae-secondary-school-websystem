@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   Loader2, Save, School, Phone, Mail, Globe, MapPin, Users,
   Link2, MessageCircle, Lock, Eye, EyeOff, Shield, AtSign,
-  Award, Plus, Trash2, Pencil, X, Clock,
+  Award, Plus, Trash2, Pencil, X, Clock, Video,
 } from 'lucide-react';
 import Image from 'next/image';
 import {
@@ -122,15 +122,16 @@ export default function SettingsAdminPage() {
         updatedLogoUrl = logoRes.data.logoUrl;
       }
 
-      // Merge: original settings + form edits + new logoUrl, then strip 'id'
+      // Merge: original settings + form edits + new logoUrl, then strip 'id' & 'logoPubId'
       const payload = { ...settings, ...form, ...(updatedLogoUrl ? { logoUrl: updatedLogoUrl } : {}) };
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id: _id, ...payloadWithoutId } = payload as SchoolSettings & { id?: string };
+      const { id: _id, logoPubId: _logoPubId, ...payloadWithoutId } = payload as SchoolSettings & { id?: string; logoPubId?: string };
 
-      await settingsApi.updateSettings(payloadWithoutId);
-      // Update local state so future saves are consistent
-      setSettings(s => ({ ...s, ...payloadWithoutId } as SchoolSettings));
-      if (updatedLogoUrl) setForm(p => ({ ...p, logoUrl: updatedLogoUrl }));
+      const res = await settingsApi.updateSettings(payloadWithoutId);
+      const savedData = res.data?.settings || { ...settings, ...payloadWithoutId };
+      setSettings(savedData);
+      setForm(savedData);
+      setLogoFile(null);
       toast('Mipangilio imehifadhiwa ✓', 'success');
     } catch (e: unknown) {
       const errMsg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
@@ -139,6 +140,7 @@ export default function SettingsAdminPage() {
       toast(errMsg, 'error');
     } finally { setIsSaving(false); }
   };
+
 
   const handlePasswordChange = async () => {
     if (!passForm.currentPassword || !passForm.newPassword || !passForm.confirmPassword) { toast('Jaza nyanja zote', 'warning'); return; }
@@ -281,15 +283,18 @@ export default function SettingsAdminPage() {
               </Section>
             )}
 
-            {/* ── Mitandao ── */}
+            {/* ── Mitandao & Media ── */}
             {tab === 'social' && (
               <Section>
-                <p style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.4)' }}>Ongeza viungo vya mitandao ya kijamii (inayoanza na https://)</p>
+                <p style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.4)' }}>Ongeza viungo vya mitandao ya kijamii na Media Reel (inayoanza na https://)</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '1rem' }}>
+                  <AdminField label="Video Reel ya Sanaa (YouTube / Video Link)">
+                    <IconInput icon={Video} type="url" value={form.artsReelUrl || ''} onValueChange={f('artsReelUrl')} placeholder="https://www.youtube.com/watch?v=..." />
+                  </AdminField>
                   <AdminField label="Facebook"><IconInput icon={Link2} type="url" value={form.facebook || ''} onValueChange={f('facebook')} placeholder="https://facebook.com/shule" /></AdminField>
                   <AdminField label="Twitter / X"><IconInput icon={AtSign} type="url" value={form.twitter || ''} onValueChange={f('twitter')} placeholder="https://twitter.com/shule" /></AdminField>
                   <AdminField label="Instagram"><IconInput icon={AtSign} type="url" value={form.instagram || ''} onValueChange={f('instagram')} placeholder="https://instagram.com/shule" /></AdminField>
-                  <AdminField label="YouTube"><IconInput icon={Globe} type="url" value={form.youtube || ''} onValueChange={f('youtube')} placeholder="https://youtube.com/@shule" /></AdminField>
+                  <AdminField label="YouTube Channel"><IconInput icon={Globe} type="url" value={form.youtube || ''} onValueChange={f('youtube')} placeholder="https://youtube.com/@shule" /></AdminField>
                 </div>
               </Section>
             )}

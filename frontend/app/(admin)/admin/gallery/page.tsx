@@ -10,7 +10,7 @@ import { AdminField, AdminInput, AdminSelect, AdminTextarea, BtnPrimary, BtnSeco
 import { useToast } from '@/components/ui/Toast';
 import { Plus, Trash2, Loader2, AlertTriangle, ImageIcon, FolderOpen, X, Upload, Grid3X3 } from 'lucide-react';
 
-const ALBUMS = ['Shule', 'Michezo', 'Sherehe', 'Maabara', 'Mazingira', 'Mengine'];
+const ALBUMS = ['Shule', 'Sanaa', 'Michezo', 'Sherehe', 'Maabara', 'Mazingira', 'Mengine'];
 
 export default function GalleryAdminPage() {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);

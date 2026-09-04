@@ -53,7 +53,7 @@ export default function TimetableAdminPage() {
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
-      fd.append('timetable', file);
+      fd.append('file', file);
       await timetableApi.upload(fd);
       toast('Ratiba imepakiwa ✓', 'success');
       setUploadModal(false); setFile(null); setForm(emptyForm);
@@ -156,9 +156,10 @@ export default function TimetableAdminPage() {
                     {format(new Date(t.createdAt), 'dd/MM/yyyy')}
                   </span>
                   <a
-                    href={t.fileUrl}
+                    href={t.fileUrl ? (t.fileUrl.includes('/upload/') && !t.fileUrl.includes('fl_attachment') ? t.fileUrl.replace('/upload/', `/upload/fl_attachment:${encodeURIComponent(t.title.replace(/[^a-zA-Z0-9_-]/g, '_'))}/`) : t.fileUrl) : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
+                    download
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '.35rem', padding: '.4rem .875rem', borderRadius: '.625rem', fontSize: '.75rem', fontWeight: 700, background: 'rgba(0,255,65,.1)', border: '1px solid rgba(0,255,65,.25)', color: '#00FF41', textDecoration: 'none', transition: 'all .2s' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.2)'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.1)'; }}

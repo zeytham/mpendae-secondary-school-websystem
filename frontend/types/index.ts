@@ -141,6 +141,7 @@ export interface SchoolSettings {
   founded: string;
   principal: string;
   nectaPassRate?: string;
+  artsReelUrl?: string;
   facebook?: string;
   twitter?: string;
   instagram?: string;
