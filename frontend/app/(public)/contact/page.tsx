@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
-import { settingsApi } from '@/lib/api';
+import { settingsApi, formatApiError } from '@/lib/api';
 import { SchoolSettings } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -153,8 +153,9 @@ export default function ContactPage() {
       setTimeout(() => setConfetti(false), 3000);
       reset();
       toast('Ujumbe wako umetumwa! 🎉', 'success');
-    } catch {
-      toast('Tatizo limetokea. Jaribu tena baadaye.', 'error');
+    } catch (err: unknown) {
+      const msg = formatApiError(err, 'Tatizo limetokea. Jaribu tena baadaye.');
+      toast(msg, 'error');
     } finally { setSubmitting(false); }
   };
 

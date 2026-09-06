@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Menu, GraduationCap, Users, Loader2, Bell, Plus, ChevronRight, LogOut, Settings, UserCircle, Command, WifiOff, ClipboardList } from 'lucide-react';
+import { Search, Menu, GraduationCap, Users, Loader2, Bell, Plus, ChevronRight, LogOut, Settings, UserCircle, Command, WifiOff, ClipboardList, CheckCheck, Check } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { usePathname, useRouter } from 'next/navigation';
 import { studentsApi, teachersApi, admissionsApi } from '@/lib/api';
@@ -49,8 +49,9 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* ── Notifications ── */
+  /* ── Notifications & Read State ── */
   const [pendingAdmissions, setPendingAdmissions] = useState<Admission[]>([]);
+  const [readNotifIds, setReadNotifIds]           = useState<string[]>([]);
   const [notifLoading, setNotifLoading]           = useState(false);
   const notifFetchedRef = useRef(false);
 
@@ -60,6 +61,36 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
   const [showNotif, setShowNotif]       = useState(false);
   const [time, setTime]                 = useState('');
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  /* Load read notifications from localStorage */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('mpendae_read_notifs');
+      if (saved) setReadNotifIds(JSON.parse(saved));
+    } catch { /* skip */ }
+  }, []);
+
+  const saveReadNotifs = (ids: string[]) => {
+    setReadNotifIds(ids);
+    try {
+      localStorage.setItem('mpendae_read_notifs', JSON.stringify(ids));
+    } catch { /* skip */ }
+  };
+
+  const markAsRead = (id: string) => {
+    if (!readNotifIds.includes(id)) {
+      saveReadNotifs([...readNotifIds, id]);
+    }
+  };
+
+  const markAllAsRead = () => {
+    const allIds = pendingAdmissions.map(a => a.id);
+    const combined = Array.from(new Set([...readNotifIds, ...allIds]));
+    saveReadNotifs(combined);
+  };
+
+  const unreadAdmissions = pendingAdmissions.filter(a => !readNotifIds.includes(a.id));
+  const notifCount = unreadAdmissions.length;
 
   /* Live time */
   useEffect(() => {
@@ -139,7 +170,6 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
   const goTo = (path: string) => { setShowDropdown(false); setQuery(''); router.push(path); };
   const hasResults = students.length > 0 || teachers.length > 0;
   const greeting   = new Date().getHours() < 12 ? 'Habari za Asubuhi' : new Date().getHours() < 17 ? 'Habari za Mchana' : 'Habari za Jioni';
-  const notifCount = pendingAdmissions.length;
 
   return (
     <header className="admin-header">
@@ -303,10 +333,15 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
           </AnimatePresence>
         </div>
 
-        {/* ── Bell — Real Notifications ── */}
+        {/* ── Bell — Real Interactive Notifications ── */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setShowNotif(!showNotif); setShowUserMenu(false); setShowQuickAdd(false); }}
+            onClick={() => {
+              const nextState = !showNotif;
+              setShowNotif(nextState);
+              setShowUserMenu(false);
+              setShowQuickAdd(false);
+            }}
             style={{ position: 'relative', width: 34, height: 34, borderRadius: '.5rem', background: showNotif ? 'rgba(0,255,65,.08)' : 'rgba(255,255,255,.05)', border: `1px solid ${showNotif ? 'rgba(0,255,65,.25)' : 'rgba(255,255,255,.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showNotif ? '#00FF41' : 'rgba(255,255,255,.5)', transition: 'all .2s', padding: 0, fontSize: 0 }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.08)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = showNotif ? 'rgba(0,255,65,.08)' : 'rgba(255,255,255,.05)'; (e.currentTarget as HTMLElement).style.color = showNotif ? '#00FF41' : 'rgba(255,255,255,.5)'; }}
@@ -325,14 +360,25 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
               <motion.div
                 initial={{ opacity: 0, y: -8, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: .15 }}
-                style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 300, background: '#030604', border: '1px solid rgba(255,255,255,.1)', borderRadius: '.875rem', boxShadow: '0 16px 40px rgba(0,0,0,.6)', overflow: 'hidden', zIndex: 100 }}
+                style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 330, background: '#030604', border: '1px solid rgba(255,255,255,.1)', borderRadius: '.875rem', boxShadow: '0 16px 40px rgba(0,0,0,.6)', overflow: 'hidden', zIndex: 100 }}
               >
                 <div style={{ padding: '.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <p style={{ fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.18em', color: 'rgba(255,255,255,.25)', margin: 0 }}>Arifa</p>
-                  {notifCount > 0 && (
-                    <span style={{ fontSize: '.62rem', fontWeight: 700, color: '#ff4757', background: 'rgba(255,71,87,.1)', border: '1px solid rgba(255,71,87,.25)', padding: '.1rem .5rem', borderRadius: 999 }}>
-                      {notifCount} inasubiri
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+                    <p style={{ fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.18em', color: 'rgba(255,255,255,.35)', margin: 0 }}>Arifa</p>
+                    {notifCount > 0 && (
+                      <span style={{ fontSize: '.62rem', fontWeight: 800, color: '#ff4757', background: 'rgba(255,71,87,.12)', border: '1px solid rgba(255,71,87,.3)', padding: '.1rem .5rem', borderRadius: 999 }}>
+                        {notifCount} mpya
+                      </span>
+                    )}
+                  </div>
+                  {pendingAdmissions.length > 0 && notifCount > 0 && (
+                    <button
+                      onClick={markAllAsRead}
+                      style={{ background: 'none', border: 'none', color: 'var(--c-lime)', fontSize: '.68rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '.25rem', padding: 0 }}
+                      title="Tia alama zote zimesomwa"
+                    >
+                      <CheckCheck style={{ width: 13, height: 13 }} /> Soma Zote
+                    </button>
                   )}
                 </div>
 
@@ -351,33 +397,38 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
                     <p style={{ padding: '.5rem 1rem .25rem', fontSize: '.68rem', color: 'rgba(255,255,255,.25)', fontWeight: 600, margin: 0 }}>
                       Maombi ya Usajili Yanayosubiri
                     </p>
-                    {pendingAdmissions.map(adm => (
-                      <button key={adm.id} onClick={() => { router.push('/admin/admissions'); setShowNotif(false); }}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.75rem 1rem', background: 'none', border: 'none', borderBottom: '1px solid rgba(255,255,255,.04)', cursor: 'pointer', transition: 'background .15s', textAlign: 'left' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,71,87,.04)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'none'}
-                      >
-                        <div style={{ width: 32, height: 32, borderRadius: '.5rem', background: 'rgba(255,71,87,.1)', border: '1px solid rgba(255,71,87,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <ClipboardList style={{ width: 14, height: 14, color: '#ff4757' }} />
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: '.8125rem', fontWeight: 600, color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {adm.firstName} {adm.lastName}
-                          </p>
-                          <p style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.3)', margin: 0, marginTop: '.1rem' }}>
-                            {adm.referenceNo} · {format(new Date(adm.createdAt), 'dd/MM HH:mm')}
-                          </p>
-                        </div>
-                        <span style={{ fontSize: '.6rem', fontWeight: 700, color: '#ffa502', background: 'rgba(255,165,2,.1)', border: '1px solid rgba(255,165,2,.25)', padding: '.15rem .45rem', borderRadius: 999, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                          Inasubiri
-                        </span>
-                      </button>
-                    ))}
+                    {pendingAdmissions.map(adm => {
+                      const isUnread = !readNotifIds.includes(adm.id);
+                      return (
+                        <button key={adm.id} onClick={() => { markAsRead(adm.id); router.push('/admin/admissions'); setShowNotif(false); }}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.75rem 1rem', background: isUnread ? 'rgba(255,71,87,.04)' : 'none', border: 'none', borderBottom: '1px solid rgba(255,255,255,.04)', cursor: 'pointer', transition: 'background .15s', textAlign: 'left' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.05)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = isUnread ? 'rgba(255,71,87,.04)' : 'none'}
+                        >
+                          <div style={{ width: 32, height: 32, borderRadius: '.5rem', background: isUnread ? 'rgba(255,71,87,.12)' : 'rgba(255,255,255,.05)', border: `1px solid ${isUnread ? 'rgba(255,71,87,.3)' : 'rgba(255,255,255,.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <ClipboardList style={{ width: 14, height: 14, color: isUnread ? '#ff4757' : 'rgba(255,255,255,.4)' }} />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <p style={{ fontSize: '.8125rem', fontWeight: isUnread ? 800 : 600, color: isUnread ? '#fff' : 'rgba(255,255,255,.6)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {adm.firstName} {adm.lastName}
+                            </p>
+                            <p style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.35)', margin: 0, marginTop: '.1rem' }}>
+                              {adm.referenceNo} · {format(new Date(adm.createdAt), 'dd/MM HH:mm')}
+                            </p>
+                          </div>
+                          {isUnread ? (
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff4757', boxShadow: '0 0 8px rgba(255,71,87,.8)', flexShrink: 0 }} title="Haijasomwa" />
+                          ) : (
+                            <Check style={{ width: 14, height: 14, color: 'rgba(255,255,255,.2)', flexShrink: 0 }} />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
                 <button
-                  onClick={() => { router.push('/admin/admissions'); setShowNotif(false); }}
+                  onClick={() => { markAllAsRead(); router.push('/admin/admissions'); setShowNotif(false); }}
                   style={{ width: '100%', padding: '.75rem 1rem', background: 'rgba(255,255,255,.03)', border: 'none', borderTop: '1px solid rgba(255,255,255,.06)', cursor: 'pointer', color: 'rgba(0,255,65,.7)', fontSize: '.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.375rem', transition: 'background .2s' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.05)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'}

@@ -172,4 +172,44 @@ export const milestonesApi = {
   delete: (id: string) => api.delete(`/milestones/${id}`),
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  firstName: 'Jina la Kwanza',
+  lastName: 'Jina la Ukoo',
+  gender: 'Jinsia',
+  dateOfBirth: 'Tarehe ya Kuzaliwa',
+  primarySchool: 'Shule ya Msingi',
+  kcpeScore: 'Alama za PSLE/Matokeo',
+  parentName: 'Jina la Mzazi/Mlezi',
+  parentPhone: 'Nambari ya Simu ya Mzazi',
+  parentEmail: 'Barua Pepe ya Mzazi',
+  address: 'Anwani',
+  name: 'Jina',
+  email: 'Barua Pepe',
+  subject: 'Mada',
+  message: 'Ujumbe',
+};
+
+export function formatApiError(err: unknown, defaultMessage = 'Tatizo limetokea. Jaribu tena.'): string {
+  if (!err || typeof err !== 'object') return defaultMessage;
+  const resData = (err as { response?: { data?: { error?: string; details?: Array<{ field: string; message: string }> } } })?.response?.data;
+  if (!resData) return defaultMessage;
+
+  if (Array.isArray(resData.details) && resData.details.length > 0) {
+    const list = resData.details
+      .map((d) => {
+        const label = FIELD_LABELS[d.field] || d.field;
+        return `${label}: ${d.message}`;
+      })
+      .join('; ');
+    return `Tafadhali rekebisha: ${list}`;
+  }
+
+  if (resData.error) {
+    return resData.error;
+  }
+
+  return defaultMessage;
+}
+
 export default api;
+

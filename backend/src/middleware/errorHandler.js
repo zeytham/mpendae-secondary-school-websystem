@@ -24,9 +24,11 @@ const errorHandler = (err, req, res, next) => {
 
   // Zod validation errors
   if (err.name === 'ZodError') {
+    const details = err.errors.map((e) => ({ field: e.path.join('.'), message: e.message }));
+    const firstMsg = details[0]?.message || 'Taarifa za fomu hazijakamilika vizuri.';
     return res.status(400).json({
-      error: 'Validation failed',
-      details: err.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      error: `Validation failed: ${firstMsg}`,
+      details,
     });
   }
 

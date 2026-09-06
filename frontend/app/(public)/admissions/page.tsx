@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
-import { admissionsApi } from '@/lib/api';
+import Link from 'next/link';
+import { admissionsApi, formatApiError } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import {
   CheckCircle, ChevronRight, ChevronLeft, Loader2, User, Users,
   GraduationCap, ClipboardCheck, HelpCircle, Download, ArrowRight,
-  FileCheck, Search, UserCheck,
+  FileCheck, Search, UserCheck, Copy, Check, RotateCcw, Home,
 } from 'lucide-react';
 
 /* ─── STEP CONFIG ─── */
@@ -80,9 +81,9 @@ function FaqItem({ q, a, index }: { q: string; a: string; index: number }) {
 function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(255,255,255,.45)', marginBottom: '.5rem' }}>{label}</label>
+      <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: error ? '#EF4444' : 'rgba(255,255,255,.45)', marginBottom: '.5rem', transition: 'color .2s' }}>{label}</label>
       {children}
-      {error && <p style={{ fontSize: '.72rem', color: '#EF4444', marginTop: '.3rem', fontWeight: 600 }}>{error}</p>}
+      {error && <p style={{ fontSize: '.75rem', color: '#EF4444', marginTop: '.35rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '.3rem' }}>⚠️ {error}</p>}
     </div>
   );
 }
@@ -91,8 +92,9 @@ export default function AdmissionsPage() {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [referenceNo, setReferenceNo] = useState('');
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
-  const { register, handleSubmit, watch, trigger, formState: { errors } } = useForm<FormData>();
+  const { register, handleSubmit, watch, trigger, reset, formState: { errors } } = useForm<FormData>();
   const formData = watch();
 
   const DEADLINE = '2026-01-31T23:59:59';
@@ -104,8 +106,31 @@ export default function AdmissionsPage() {
   };
 
   const nextStep = async () => {
-    const valid = await trigger(stepFields[step]);
-    if (valid) setStep(s => s + 1);
+    const fields = stepFields[step];
+    const valid = await trigger(fields);
+    if (valid) {
+      setStep(s => s + 1);
+    } else {
+      const labels: Record<string, string> = {
+        firstName: 'Jina la Kwanza',
+        lastName: 'Jina la Ukoo',
+        gender: 'Jinsia',
+        dateOfBirth: 'Tarehe ya Kuzaliwa',
+        parentName: 'Jina la Mzazi/Mlezi',
+        parentPhone: 'Nambari ya Simu ya Mzazi',
+        parentEmail: 'Barua Pepe ya Mzazi',
+        address: 'Anwani ya Makazi',
+        primarySchool: 'Jina la Shule ya Msingi',
+        kcpeScore: 'Alama za PSLE/Matokeo',
+      };
+      const invalidKeys = fields.filter(f => !formData[f] || !!errors[f]);
+      const invalidLabels = invalidKeys.map(k => labels[k] || k);
+      if (invalidLabels.length > 0) {
+        toast(`Tafadhali jaza sehemu hizi kwa usahihi: ${invalidLabels.join(', ')}`, 'error');
+      } else {
+        toast('Tafadhali thibitisha sehemu zote kabla ya kuendelea.', 'error');
+      }
+    }
   };
 
   const onSubmit = async (data: FormData) => {
@@ -114,26 +139,48 @@ export default function AdmissionsPage() {
       const res = await admissionsApi.submit(data as unknown as Record<string, unknown>);
       setReferenceNo(res.data.referenceNo);
       setStep(4);
+      toast('Ombi lako limewasilishwa kikamilifu! 🎉', 'success');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Tatizo limetokea. Jaribu tena.';
+      const msg = formatApiError(err, 'Imeshindikana kuwasilisha ombi. Tafadhali thibitisha taarifa zote na ujaribu tena.');
       toast(msg, 'error');
     } finally { setIsSubmitting(false); }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)',
-    borderRadius: '.875rem', padding: '.75rem 1rem', color: '#fff', fontSize: '.9rem',
-    outline: 'none', transition: 'border-color .2s',
+  const handleCopyRef = () => {
+    if (!referenceNo) return;
+    navigator.clipboard.writeText(referenceNo);
+    setCopied(true);
+    toast('Namba ya Rejeleo imenakiliwa!', 'success');
+    setTimeout(() => setCopied(false), 3000);
   };
 
-  /* ── SUCCESS ── */
+  const handleNewSubmission = () => {
+    reset();
+    setReferenceNo('');
+    setStep(0);
+    window.scrollTo({ top: 300, behavior: 'smooth' });
+    toast('Fomu imesafishwa — uko tayari kujaza ombi jipya', 'info');
+  };
+
+  const getInputStyle = (hasError?: boolean): React.CSSProperties => ({
+    width: '100%',
+    background: hasError ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,.05)',
+    border: `1px solid ${hasError ? '#EF4444' : 'rgba(255,255,255,.12)'}`,
+    borderRadius: '.875rem', padding: '.75rem 1rem', color: '#fff', fontSize: '.9rem',
+    outline: 'none', transition: 'all .2s ease-in-out',
+    boxShadow: hasError ? '0 0 0 3px rgba(239, 68, 68, 0.2)' : 'none',
+  });
+
+  const inputStyle = getInputStyle(false);
+
+  /* ── SUCCESS / POST-SUBMISSION VIEW ── */
   if (step === 4) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', paddingTop: 'calc(var(--nav-h) + 3rem)', background: 'var(--c-bg)' }}>
         <motion.div
           initial={{ opacity: 0, scale: .95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: .6, ease: [.22, 1, .36, 1] }}
-          style={{ maxWidth: 480, width: '100%', textAlign: 'center' }}
+          style={{ maxWidth: 540, width: '100%', textAlign: 'center' }}
         >
           <motion.div
             initial={{ scale: 0 }} animate={{ scale: 1 }}
@@ -142,16 +189,54 @@ export default function AdmissionsPage() {
           >
             <CheckCircle style={{ width: 52, height: 52, color: 'var(--c-lime)' }} />
           </motion.div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 900, color: '#fff', marginBottom: '.75rem' }}>Asante Sana! 🎉</h1>
-          <p style={{ color: 'rgba(255,255,255,.55)', marginBottom: '2rem', lineHeight: 1.75 }}>
-            Ombi lako limepokelewa kikamilifu. Tutakuwasiliana nawe hivi karibuni.
+          <h1 style={{ fontSize: '2.2rem', fontWeight: 900, color: '#fff', marginBottom: '.75rem' }}>Asante Sana! 🎉</h1>
+          <p style={{ color: 'rgba(255,255,255,.6)', marginBottom: '2rem', lineHeight: 1.75, fontSize: '.95rem' }}>
+            Ombi lako la usajili limepokelewa kikamilifu katika Mfumo wa Mpendae Secondary School. Tutawasiliana nawe hivi karibuni kupitia barua pepe au simu.
           </p>
-          <div style={{ padding: '1.75rem', borderRadius: '1.5rem', background: 'rgba(0,255,65,.06)', border: '1px solid rgba(0,255,65,.18)', marginBottom: '1.5rem' }}>
-            <p style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,255,65,.6)', marginBottom: '.5rem' }}>Nambari ya Rejeleo</p>
-            <p style={{ fontFamily: 'var(--f-display)', fontSize: '2rem', fontWeight: 900, color: 'var(--c-lime)', letterSpacing: '.05em' }}>{referenceNo}</p>
-            <p style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.35)', marginTop: '.5rem' }}>Hifadhi nambari hii — utatumia kufuatilia ombi lako</p>
+
+          <div style={{ padding: '1.75rem', borderRadius: '1.5rem', background: 'rgba(0,255,65,.06)', border: '1px solid rgba(0,255,65,.2)', marginBottom: '2rem', position: 'relative' }}>
+            <p style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,255,65,.7)', marginBottom: '.5rem' }}>Nambari ya Rejeleo</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.75rem', marginBottom: '.5rem' }}>
+              <p style={{ fontFamily: 'var(--f-display)', fontSize: '2.2rem', fontWeight: 900, color: 'var(--c-lime)', letterSpacing: '.05em', margin: 0 }}>{referenceNo}</p>
+              <button
+                onClick={handleCopyRef}
+                style={{ background: 'rgba(0,255,65,.15)', border: '1px solid rgba(0,255,65,.3)', color: 'var(--c-lime)', borderRadius: '.6rem', padding: '.4rem .75rem', display: 'flex', alignItems: 'center', gap: '.35rem', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', transition: 'background .2s' }}
+              >
+                {copied ? <><Check style={{ width: 14, height: 14 }} /> Imenakiliwa</> : <><Copy style={{ width: 14, height: 14 }} /> Nakili</>}
+              </button>
+            </div>
+            <p style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.4)', margin: 0 }}>Hifadhi nambari hii — utatumia kufuatilia ombi lako.</p>
           </div>
-          <p style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.4)' }}>Uthibitisho umetumwa kwa barua pepe uliyotoa.</p>
+
+          {/* Action Buttons for Next Steps */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '.875rem' }}>
+            <button
+              onClick={handleNewSubmission}
+              style={{
+                width: '100%', padding: '1rem 1.5rem', borderRadius: '1rem',
+                background: 'var(--c-lime)', color: '#050805', fontWeight: 800, fontSize: '.95rem',
+                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.6rem',
+                boxShadow: '0 4px 20px rgba(0,255,65,.25)', transition: 'transform .15s',
+              }}
+              onMouseDown={e => (e.currentTarget.style.transform = 'scale(.98)')}
+              onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+            >
+              <RotateCcw style={{ width: 18, height: 18 }} /> Wasilisha Ombi Jingine
+            </button>
+
+            <Link
+              href="/"
+              style={{
+                width: '100%', padding: '.875rem 1.5rem', borderRadius: '1rem',
+                background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)',
+                color: '#fff', fontWeight: 700, fontSize: '.9rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.6rem',
+                textDecoration: 'none', transition: 'background .2s',
+              }}
+            >
+              <Home style={{ width: 18, height: 18 }} /> Rudi Ukurasa Mkuu
+            </Link>
+          </div>
         </motion.div>
       </div>
     );
@@ -352,26 +437,22 @@ export default function AdmissionsPage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <Field label="Jina la Kwanza *" error={errors.firstName?.message}>
-                                  <input {...register('firstName', { required: 'Inahitajika' })} style={inputStyle} placeholder="Jina la kwanza"
-                                    onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                    onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                  <input {...register('firstName', { required: 'Jina la kwanza linahitajika' })} style={getInputStyle(!!errors.firstName)} placeholder="Jina la kwanza" />
                                 </Field>
                                 <Field label="Jina la Pili *" error={errors.lastName?.message}>
-                                  <input {...register('lastName', { required: 'Inahitajika' })} style={inputStyle} placeholder="Jina la ukoo"
-                                    onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                    onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                  <input {...register('lastName', { required: 'Jina la ukoo linahitajika' })} style={getInputStyle(!!errors.lastName)} placeholder="Jina la ukoo" />
                                 </Field>
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <Field label="Jinsia *" error={errors.gender?.message}>
-                                  <select {...register('gender', { required: 'Chagua jinsia' })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                  <select {...register('gender', { required: 'Chagua jinsia' })} style={{ ...getInputStyle(!!errors.gender), cursor: 'pointer' }}>
                                     <option value="">Chagua...</option>
                                     <option value="MALE">Mume (Male)</option>
                                     <option value="FEMALE">Mke (Female)</option>
                                   </select>
                                 </Field>
                                 <Field label="Tarehe ya Kuzaliwa *" error={errors.dateOfBirth?.message}>
-                                  <input type="date" {...register('dateOfBirth', { required: 'Inahitajika' })} style={inputStyle} />
+                                  <input type="date" {...register('dateOfBirth', { required: 'Tarehe ya kuzaliwa inahitajika' })} style={getInputStyle(!!errors.dateOfBirth)} />
                                 </Field>
                               </div>
                             </div>
@@ -383,26 +464,18 @@ export default function AdmissionsPage() {
                             <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', marginBottom: '1.5rem' }}>Taarifa za Mzazi/Mlezi</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                               <Field label="Jina Kamili la Mzazi/Mlezi *" error={errors.parentName?.message}>
-                                <input {...register('parentName', { required: 'Inahitajika' })} style={inputStyle} placeholder="Jina kamili la mzazi au mlezi"
-                                  onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                <input {...register('parentName', { required: 'Jina la mzazi linahitajika' })} style={getInputStyle(!!errors.parentName)} placeholder="Jina kamili la mzazi au mlezi" />
                               </Field>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <Field label="Nambari ya Simu *" error={errors.parentPhone?.message}>
-                                  <input {...register('parentPhone', { required: 'Inahitajika', pattern: { value: /^[+\d]{10,}$/, message: 'Si sahihi' } })} style={inputStyle} placeholder="+255 7XX XXX XXX"
-                                    onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                    onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                  <input {...register('parentPhone', { required: 'Simu inahitajika', pattern: { value: /^[+\d]{10,}$/, message: 'Simu lazima iwe na nambari 10 au zaidi' } })} style={getInputStyle(!!errors.parentPhone)} placeholder="+255 7XX XXX XXX" />
                                 </Field>
                                 <Field label="Barua Pepe *" error={errors.parentEmail?.message}>
-                                  <input type="email" {...register('parentEmail', { required: 'Inahitajika' })} style={inputStyle} placeholder="barua@pepe.com"
-                                    onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                    onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                  <input type="email" {...register('parentEmail', { required: 'Barua pepe inahitajika', pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Barua pepe si sahihi' } })} style={getInputStyle(!!errors.parentEmail)} placeholder="barua@pepe.com" />
                                 </Field>
                               </div>
                               <Field label="Anwani ya Makazi *" error={errors.address?.message}>
-                                <textarea {...register('address', { required: 'Inahitajika' })} style={{ ...inputStyle, minHeight: 80, resize: 'none' }} placeholder="Mtaa, Wilaya, Mkoa"
-                                  onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                <textarea {...register('address', { required: 'Anwani ya makazi inahitajika' })} style={{ ...getInputStyle(!!errors.address), minHeight: 80, resize: 'none' }} placeholder="Mtaa, Wilaya, Mkoa" />
                               </Field>
                             </div>
                           </motion.div>
@@ -413,19 +486,13 @@ export default function AdmissionsPage() {
                             <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', marginBottom: '1.5rem' }}>Taarifa za Kielimu</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                               <Field label="Jina la Shule ya Msingi *" error={errors.primarySchool?.message}>
-                                <input {...register('primarySchool', { required: 'Inahitajika' })} style={inputStyle} placeholder="Mfano: Mpendae Primary School"
-                                  onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                <input {...register('primarySchool', { required: 'Jina la shule ya msingi linahitajika' })} style={getInputStyle(!!errors.primarySchool)} placeholder="Mfano: Mpendae Primary School" />
                               </Field>
                               <Field label="Alama za PSLE/KCPE *" error={errors.kcpeScore?.message}>
-                                <input type="number" {...register('kcpeScore', { required: 'Inahitajika', min: { value: 0, message: 'Si sahihi' }, max: { value: 500, message: 'Si sahihi' } })} style={inputStyle} placeholder="Mfano: 350"
-                                  onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                <input type="number" {...register('kcpeScore', { required: 'Alama za PSLE zinahitajika', min: { value: 0, message: 'Alama haziwezi kuwa chini ya 0' }, max: { value: 500, message: 'Alama haziwezi kuzidi 500' } })} style={getInputStyle(!!errors.kcpeScore)} placeholder="Mfano: 350" />
                               </Field>
                               <Field label="Combination Inayohitajika">
-                                <input {...register('combination')} style={inputStyle} placeholder="Mfano: PCB, HGE, BCom..."
-                                  onFocus={e => (e.target.style.borderColor = 'rgba(0,255,65,.5)')}
-                                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,.12)')} />
+                                <input {...register('combination')} style={getInputStyle(false)} placeholder="Mfano: PCB, HGE, BCom..." />
                               </Field>
                             </div>
                           </motion.div>
