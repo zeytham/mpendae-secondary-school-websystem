@@ -16,6 +16,7 @@ import Reveal from '@/components/ui/Reveal';
 import { NewsSkeleton, EventsSkeleton, GallerySkeleton, StatsSkeleton } from '@/components/ui/Skeletons';
 import { galleryApi, settingsApi } from '@/lib/api';
 
+export const revalidate = 30;
 export default async function HomePage() {
   let heroImages: string[] = [];
   let aboutImage: string | null = null;
