@@ -162,12 +162,13 @@ const remove = async (req, res, next) => {
 
 const getStats = async (req, res, next) => {
   try {
-    const [total, byForm, byGender] = await Promise.all([
+    const [total, byForm, byGender, byStatus] = await Promise.all([
       prisma.student.count({ where: { status: 'ACTIVE' } }),
       prisma.student.groupBy({ by: ['form'], _count: { id: true }, where: { status: 'ACTIVE' } }),
       prisma.student.groupBy({ by: ['gender'], _count: { id: true }, where: { status: 'ACTIVE' } }),
+      prisma.student.groupBy({ by: ['status'], _count: { id: true } }),
     ]);
-    res.json({ total, byForm, byGender });
+    res.json({ total, byForm, byGender, byStatus });
   } catch (error) {
     next(error);
   }
