@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { settingsApi, admissionsApi, studentsApi } from '@/lib/api';
-import { DashboardStats } from '@/types';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { settingsApi, admissionsApi, studentsApi, teachersApi } from '@/lib/api';
 import {
   GraduationCap, Users, ClipboardList, Calendar,
-  TrendingUp, Clock, ArrowRight, TrendingDown, Activity, RefreshCw,
+  TrendingUp, Clock, ArrowRight, Activity, RefreshCw,
+  Award, CheckCircle2, ChevronRight, AlertCircle, FileText, Settings
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -16,114 +16,115 @@ import {
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 import { motion } from 'framer-motion';
 
-const AUTO_REFRESH_MS = 30_000; // sekunde 30
+const AUTO_REFRESH_MS = 30_000;
 
-/* ── Color system: FIXED to Black/White/Lime palette ── */
-const CHART_COLORS = ['#00FF41', 'rgba(0,255,65,.7)', 'rgba(0,255,65,.45)', '#a8ffbe', 'rgba(168,255,190,.6)', 'rgba(0,255,65,.3)'];
-const PIE_COLORS   = ['#ffa502', '#00FF41', '#ff4757'];
+const CHART_COLORS = ['#00FF41', '#3d8ef8', '#ffa502', '#ff4757', '#9b59b6', '#00e5ff'];
+const PIE_COLORS = ['#ffa502', '#00FF41', '#ff4757'];
 
 const FORM_LABELS: Record<string, string> = {
+  form1: 'Form I', form2: 'Form II', form3: 'Form III',
+  form4: 'Form IV', form5: 'Form V', form6: 'Form VI',
   FORM_1: 'Form I', FORM_2: 'Form II', FORM_3: 'Form III',
   FORM_4: 'Form IV', FORM_5: 'Form V', FORM_6: 'Form VI',
 };
 
-/* Premium stat card */
-function StatCard({ icon: Icon, label, value, trend, href }: {
-  icon: React.ElementType; label: string; value: number | string; trend?: number; href?: string;
-}) {
-  const inner = (
-    <div className="admin-stat">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-        <div className="admin-stat-icon">
-          <Icon style={{ width: 22, height: 22, color: '#00FF41' }} />
-        </div>
-        {trend !== undefined && (
-          <div className={`admin-stat-trend ${trend >= 0 ? 'up' : 'down'}`}>
-            {trend >= 0 ? <TrendingUp style={{ width: 13, height: 13 }} /> : <TrendingDown style={{ width: 13, height: 13 }} />}
-            {Math.abs(trend)}%
-          </div>
-        )}
-      </div>
-      <div className="admin-stat-value">
-        <AnimatedCounter target={typeof value === 'number' ? value : 0} duration={1800} />
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '.5rem' }}>
-        <p className="admin-stat-label">{label}</p>
-        {href && <ArrowRight style={{ width: 14, height: 14, color: 'rgba(0,255,65,.4)' }} />}
-      </div>
-    </div>
-  );
-  return href
-    ? <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>{inner}</Link>
-    : <div>{inner}</div>;
-}
-
-/* Chart tooltip */
-const ChartTooltip = ({ active, payload, label }: {
-  active?: boolean; payload?: { name: string; value: number }[]; label?: string;
-}) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: '#030604', border: '1px solid rgba(0,255,65,.25)', borderRadius: '.75rem', padding: '.75rem 1rem', boxShadow: '0 16px 40px rgba(0,0,0,.6)' }}>
-      {label && <p style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)', marginBottom: '.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em' }}>{label}</p>}
-      {payload.map(p => (
-        <p key={p.name} style={{ fontSize: '.875rem', fontWeight: 700, color: '#00FF41' }}>{p.value} <span style={{ color: 'rgba(255,255,255,.45)', fontWeight: 400 }}>{p.name}</span></p>
-      ))}
-    </div>
-  );
+const cardStyle: React.CSSProperties = {
+  background: 'rgba(255, 255, 255, 0.03)',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  borderRadius: '1.25rem',
+  overflow: 'hidden',
+  backdropFilter: 'blur(12px)',
 };
 
-const stagger = { show: { transition: { staggerChildren: .08 } } };
-const fadeIn  = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: .4, ease: 'easeOut' as const } } };
+const tooltipStyle = {
+  background: '#060d08',
+  border: '1px solid rgba(0, 255, 65, 0.25)',
+  borderRadius: 12,
+  color: '#fff',
+  fontSize: 13,
+  boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+};
 
 export default function AdminDashboard() {
-  const [stats,        setStats]        = useState<DashboardStats | null>(null);
-  const [studentStats, setStudentStats] = useState<{ byForm: { form: string; _count: { id: number } }[] }>({ byForm: [] });
-  const [admStats,     setAdmStats]     = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
-  const [isLoading,    setIsLoading]    = useState(true);
+  const [dashData, setDashData] = useState<any>(null);
+  const [studentStats, setStudentStats] = useState<any>(null);
+  const [admStats, setAdmStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
+
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchData = useCallback(async (silent = false) => {
     if (silent) setIsRefreshing(true);
     else setIsLoading(true);
+
     try {
       const [dashRes, stuRes, admRes] = await Promise.all([
-        settingsApi.getDashboard(),
-        studentsApi.getStats(),
-        admissionsApi.getStats(),
+        settingsApi.getDashboard().catch(() => ({ data: {} })),
+        studentsApi.getStats().catch(() => ({ data: {} })),
+        admissionsApi.getStats().catch(() => ({ data: {} })),
       ]);
-      setStats(dashRes.data);
-      setStudentStats(stuRes.data);
-      setAdmStats(admRes.data);
+
+      setDashData(dashRes.data || {});
+      setStudentStats(stuRes.data || {});
+      setAdmStats(admRes.data || { total: 0, pending: 0, approved: 0, rejected: 0 });
+
+      if (dashRes.data?.recentAdmissions) {
+        setRecentAdmissions(dashRes.data.recentAdmissions);
+      }
       setLastUpdated(new Date());
-    } catch { /* ignore silently */ }
-    finally {
+    } catch {
+      // Ignore
+    } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
   }, []);
 
-  /* First load + auto-refresh kila sekunde 30 */
   useEffect(() => {
     fetchData(false);
-    intervalRef.current = setInterval(() => fetchData(true), AUTO_REFRESH_MS);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    const interval = setInterval(() => fetchData(true), AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
-  const formChartData = studentStats.byForm.map(item => ({
-    form: FORM_LABELS[item.form] || item.form,
-    wanafunzi: item._count.id,
-  }));
+  /* Total Student & Graduate Calculations */
+  const totalStudents = useMemo(() => {
+    return studentStats?.total || dashData?.students || 0;
+  }, [studentStats, dashData]);
 
-  const admPieData = [
-    { name: 'Inasubiri', value: admStats.pending },
-    { name: 'Imekubaliwa', value: admStats.approved },
-    { name: 'Imekataliwa', value: admStats.rejected },
-  ].filter(d => d.value > 0);
+  const totalGraduates = useMemo(() => {
+    return studentStats?.graduated || dashData?.graduated || 0;
+  }, [studentStats, dashData]);
+
+  const teacherCount = useMemo(() => {
+    return dashData?.teachers || 0;
+  }, [dashData]);
+
+  /* Form Chart Data */
+  const formChartData = useMemo(() => {
+    if (studentStats?.byForm && Array.isArray(studentStats.byForm)) {
+      return studentStats.byForm.map((item: any) => ({
+        form: FORM_LABELS[item.form] || item.form,
+        wanafunzi: item._count?.id || 0,
+      }));
+    }
+    if (studentStats?.formCounts) {
+      return Object.entries(studentStats.formCounts).map(([key, val]) => ({
+        form: FORM_LABELS[key] || key.toUpperCase(),
+        wanafunzi: Number(val) || 0,
+      }));
+    }
+    return [];
+  }, [studentStats]);
+
+  const admPieData = useMemo(() => {
+    return [
+      { name: 'Inasubiri', value: admStats.pending || 0 },
+      { name: 'Imekubaliwa', value: admStats.approved || 0 },
+      { name: 'Imekataliwa', value: admStats.rejected || 0 },
+    ].filter((d) => d.value > 0);
+  }, [admStats]);
 
   /* Greeting */
   const h = new Date().getHours();
@@ -132,16 +133,14 @@ export default function AdminDashboard() {
   if (isLoading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        {/* Shimmer stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton" style={{ height: 130, borderRadius: '1rem' }} />
+            <div key={i} className="skeleton" style={{ height: 130, borderRadius: '1.25rem' }} />
           ))}
         </div>
-        {/* Shimmer charts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          {[260, 260].map((h, i) => (
-            <div key={i} className="skeleton" style={{ height: h, borderRadius: '1rem' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+          {[280, 280].map((h, i) => (
+            <div key={i} className="skeleton" style={{ height: h, borderRadius: '1.25rem' }} />
           ))}
         </div>
       </div>
@@ -149,240 +148,273 @@ export default function AdminDashboard() {
   }
 
   return (
-    <motion.div
-      variants={stagger}
-      initial="hidden"
-      animate="show"
-      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
-    >
-      {/* ── Welcome Banner ── */}
-      <motion.div
-        variants={fadeIn}
-        style={{
-          background: 'linear-gradient(135deg, rgba(0,255,65,.06) 0%, rgba(0,255,65,.02) 50%, transparent 100%)',
-          border: '1px solid rgba(0,255,65,.12)', borderRadius: '1rem',
-          padding: '1.375rem 1.75rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem',
-          position: 'relative', overflow: 'hidden',
-        }}
-      >
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,transparent,#00FF41,transparent)' }} />
-
-        {/* Left: greeting + live indicator */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem', paddingBottom: '3rem' }}>
+      
+      {/* Welcome Banner */}
+      <div style={{
+        ...cardStyle,
+        padding: '1.5rem 2rem',
+        background: 'linear-gradient(135deg, rgba(0,255,65,.08) 0%, rgba(255,255,255,.02) 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.25rem',
+        position: 'relative'
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, transparent, #00FF41, transparent)' }} />
+        
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.625rem', marginBottom: '.3rem' }}>
-            <p style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.18em', color: 'rgba(0,255,65,.6)', margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.35rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#00FF41' }}>
               {greeting}
-            </p>
-            {/* Live dot */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.3rem' }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%', background: '#00FF41',
-                display: 'inline-block',
-                boxShadow: '0 0 0 0 rgba(0,255,65,.6)',
-                animation: 'livePulse 2s infinite',
-              }} />
-              <span style={{ fontSize: '.6rem', fontWeight: 700, color: 'rgba(0,255,65,.5)', letterSpacing: '.1em', textTransform: 'uppercase' }}>Live</span>
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(0,255,65,0.1)', padding: '0.2rem 0.6rem', borderRadius: 999, border: '1px solid rgba(0,255,65,0.2)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00FF41', boxShadow: '0 0 8px #00FF41' }} />
+              <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#00FF41', letterSpacing: '0.1em' }}>LIVE SYNC</span>
             </div>
           </div>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-.015em' }}>
-            Karibu, <span style={{ color: '#00FF41' }}>Mpendae School</span>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', margin: 0 }}>
+            Dashibodi ya Uongozi — <span style={{ color: '#00FF41' }}>Mpendae Secondary School</span>
           </h1>
-          {/* Last updated */}
           {lastUpdated && (
-            <p style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.25)', marginTop: '.3rem', display: 'flex', alignItems: 'center', gap: '.3rem' }}>
-              <Clock style={{ width: 10, height: 10 }} />
-              Imesasishwa: {format(lastUpdated, 'HH:mm:ss')}
-              {' · '} Inasasishwa kila dakika ½
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,.4)', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Clock style={{ width: 12, height: 12 }} />
+              Imesasishwa: {format(lastUpdated, 'HH:mm:ss')} · Inajiendesha kikamilifu (Auto-synced)
             </p>
           )}
         </div>
 
-        {/* Right: stats + refresh button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          {[
-            { label: 'Leo', value: format(new Date(), 'dd MMM yyyy') },
-            { label: 'Wanafunzi', value: stats?.students ?? '—' },
-            { label: 'Maombi', value: admStats.pending },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: 'rgba(255,255,255,.3)', marginBottom: '.2rem' }}>{label}</p>
-              <p style={{ fontSize: '.95rem', fontWeight: 800, color: '#fff', margin: 0 }}>{value}</p>
-            </div>
-          ))}
-
-          {/* Manual refresh button */}
+        {/* Quick Action Navigation Buttons */}
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Link href="/admin/students" style={{ textDecoration: 'none' }}>
+            <button style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+              padding: '0.625rem 1.125rem', borderRadius: '0.875rem',
+              background: 'rgba(0,255,65,0.15)', border: '1px solid rgba(0,255,65,0.3)',
+              color: '#00FF41', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', transition: 'all .2s'
+            }}>
+              <GraduationCap style={{ width: 16, height: 16 }} /> Simamia Wanafunzi & Wahitimu
+            </button>
+          </Link>
           <button
             onClick={() => fetchData(true)}
             disabled={isRefreshing}
-            title="Sasisha sasa hivi"
             style={{
-              width: 36, height: 36, borderRadius: '.625rem',
-              background: isRefreshing ? 'rgba(0,255,65,.15)' : 'rgba(0,255,65,.08)',
-              border: '1px solid rgba(0,255,65,.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
-              color: '#00FF41', transition: 'all .2s', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+              padding: '0.625rem 1rem', borderRadius: '0.875rem',
+              background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)',
+              color: '#fff', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer'
             }}
-            onMouseEnter={e => { if (!isRefreshing) (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.18)'; }}
-            onMouseLeave={e => { if (!isRefreshing) (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.08)'; }}
           >
-            <RefreshCw style={{ width: 15, height: 15, animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+            <RefreshCw style={{ width: 14, height: 14, animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
-      </motion.div>
+      </div>
 
-
-      {/* ── Stat Cards ── */}
-      <motion.div
-        variants={fadeIn}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '1rem' }}
-        className="stats-cards-grid"
-      >
-        <style>{`@media(min-width:1280px){.stats-cards-grid{grid-template-columns:repeat(4,1fr)!important;}}`}</style>
-        <StatCard icon={GraduationCap} label="Wanafunzi"    value={stats?.students || 0}          trend={5}  href="/admin/students" />
-        <StatCard icon={Users}          label="Walimu"       value={stats?.teachers || 0}           trend={0}  href="/admin/teachers" />
-        <StatCard icon={ClipboardList}  label="Maombi"       value={stats?.pendingAdmissions || 0}  trend={12} href="/admin/admissions" />
-        <StatCard icon={Calendar}       label="Matukio"      value={stats?.upcomingEvents || 0}             href="/admin/events" />
-      </motion.div>
-
-      {/* ── Charts ── */}
-      <motion.div variants={fadeIn} style={{ display: 'grid', gap: '1rem' }} className="charts-grid">
-        <style>{`@media(min-width:1024px){.charts-grid{grid-template-columns:1.2fr 0.8fr!important;}}`}</style>
-
-        {/* Bar chart */}
-        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '1rem', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-            <div>
-              <p style={{ fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.18em', color: 'rgba(0,255,65,.6)', marginBottom: '.25rem' }}>Takwimu</p>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0 }}>Wanafunzi kwa Darasa</h3>
+      {/* Top 4 Stat Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1.25rem' }}>
+        
+        {/* Total Students */}
+        <Link href="/admin/students" style={{ textDecoration: 'none' }}>
+          <div style={{
+            ...cardStyle, padding: '1.5rem', transition: 'all .25s',
+            background: 'linear-gradient(135deg, rgba(0,255,65,0.08) 0%, rgba(255,255,255,0.02) 100%)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Wanafunzi Wanaosoma</p>
+              <GraduationCap style={{ color: '#00FF41', width: 24, height: 24 }} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem', fontSize: '.72rem', color: 'rgba(0,255,65,.7)' }}>
-              <Activity style={{ width: 14, height: 14 }} /> Live
-            </div>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', margin: '0.5rem 0 0' }}>
+              <AnimatedCounter target={totalStudents} duration={1800} />
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: '#00FF41', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <TrendingUp style={{ width: 14, height: 14 }} /> Form 1 hadi Form 6
+            </p>
           </div>
+        </Link>
+
+        {/* Total Graduates */}
+        <Link href="/admin/students" style={{ textDecoration: 'none' }}>
+          <div style={{
+            ...cardStyle, padding: '1.5rem', transition: 'all .25s',
+            background: 'linear-gradient(135deg, rgba(61,142,248,0.08) 0%, rgba(255,255,255,0.02) 100%)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Wahitimu Waliofaulu</p>
+              <Award style={{ color: '#3d8ef8', width: 24, height: 24 }} />
+            </div>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 900, color: '#3d8ef8', margin: '0.5rem 0 0' }}>
+              <AnimatedCounter target={totalGraduates} duration={1800} />
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.35rem' }}>
+              Wahitimu wa Form 4 & Form 6
+            </p>
+          </div>
+        </Link>
+
+        {/* Teachers */}
+        <Link href="/admin/teachers" style={{ textDecoration: 'none' }}>
+          <div style={{
+            ...cardStyle, padding: '1.5rem', transition: 'all .25s',
+            background: 'linear-gradient(135deg, rgba(255,165,2,0.08) 0%, rgba(255,255,255,0.02) 100%)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Walimu Wataalamu</p>
+              <Users style={{ color: '#ffa502', width: 24, height: 24 }} />
+            </div>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 900, color: '#ffa502', margin: '0.5rem 0 0' }}>
+              <AnimatedCounter target={teacherCount} duration={1800} />
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.35rem' }}>
+              Walimu waliosajiliwa mfumoni
+            </p>
+          </div>
+        </Link>
+
+        {/* Pending Admissions */}
+        <Link href="/admin/admissions" style={{ textDecoration: 'none' }}>
+          <div style={{
+            ...cardStyle, padding: '1.5rem', transition: 'all .25s',
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(255,255,255,0.02) 100%)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Maombi Yasiyoshughulikiwa</p>
+              <ClipboardList style={{ color: '#ef4444', width: 24, height: 24 }} />
+            </div>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 900, color: '#ef4444', margin: '0.5rem 0 0' }}>
+              <AnimatedCounter target={admStats.pending} duration={1800} />
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.35rem' }}>
+              Jumla ya maombi: {admStats.total}
+            </p>
+          </div>
+        </Link>
+
+      </div>
+
+      {/* Analytics Charts Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
+        
+        {/* Form Distribution Chart */}
+        <div style={{ ...cardStyle, padding: '1.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <p style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#00FF41', margin: 0 }}>Uchambuzi</p>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', margin: '0.2rem 0 0' }}>Mgawanyo wa Wanafunzi Kwa Kila Darasa</h3>
+            </div>
+            <Link href="/admin/students" style={{ color: '#00FF41', fontSize: '0.8125rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              Hariri Idadi <ChevronRight style={{ width: 14, height: 14 }} />
+            </Link>
+          </div>
+
           {formChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={formChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" />
-                <XAxis dataKey="form" tick={{ fill: 'rgba(255,255,255,.35)', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'rgba(255,255,255,.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,255,65,.04)' }} />
-                <Bar dataKey="wanafunzi" fill="#00FF41" radius={[6, 6, 0, 0]} maxBarSize={48} />
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={formChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                <XAxis dataKey="form" tick={{ fill: 'rgba(255,255,255,.5)', fontSize: 12 }} />
+                <YAxis tick={{ fill: 'rgba(255,255,255,.5)', fontSize: 12 }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="wanafunzi" fill="#00FF41" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ height: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-              <TrendingUp style={{ width: 40, height: 40, color: 'rgba(255,255,255,.1)' }} />
-              <p style={{ color: 'rgba(255,255,255,.2)', fontSize: '.8125rem' }}>Data haipatikani bado</p>
+            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)' }}>
+              Hakuna data ya madarasa.
             </div>
           )}
         </div>
 
-        {/* Pie chart */}
-        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '1rem', padding: '1.5rem' }}>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <p style={{ fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.18em', color: 'rgba(0,255,65,.6)', marginBottom: '.25rem' }}>Usajili</p>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0 }}>Hali ya Maombi</h3>
+        {/* Admissions Pie Chart */}
+        <div style={{ ...cardStyle, padding: '1.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <p style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#3d8ef8', margin: 0 }}>Udahili</p>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', margin: '0.2rem 0 0' }}>Mgawanyo wa Maombi ya Udahili</h3>
+            </div>
+            <Link href="/admin/admissions" style={{ color: '#3d8ef8', fontSize: '0.8125rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              Angalia Yote <ChevronRight style={{ width: 14, height: 14 }} />
+            </Link>
           </div>
+
           {admPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie
-                  data={admPieData} cx="50%" cy="45%"
-                  innerRadius={55} outerRadius={85}
-                  paddingAngle={3} dataKey="value"
-                  animationBegin={0} animationDuration={900}
-                >
-                  {admPieData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i]} stroke="transparent" />
-                  ))}
+                <Pie data={admPieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
+                  {admPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip content={<ChartTooltip />} />
-                <Legend
-                  iconType="circle" iconSize={8}
-                  formatter={v => <span style={{ color: 'rgba(255,255,255,.55)', fontSize: '.75rem', fontWeight: 600 }}>{v}</span>}
-                />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend formatter={(v) => <span style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }}>{v}</span>} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ height: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-              <ClipboardList style={{ width: 40, height: 40, color: 'rgba(255,255,255,.1)' }} />
-              <p style={{ color: 'rgba(255,255,255,.2)', fontSize: '.8125rem' }}>Hakuna maombi bado</p>
+            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)' }}>
+              Hakuna maombi ya udahili bado.
             </div>
           )}
         </div>
-      </motion.div>
 
-      {/* ── Recent Activity ── */}
-      <motion.div variants={fadeIn} style={{ display: 'grid', gap: '1rem' }} className="activity-grid">
-        <style>{`@media(min-width:1024px){.activity-grid{grid-template-columns:1fr 1fr!important;}}`}</style>
+      </div>
 
-        {/* Recent News */}
-        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '1rem', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0 }}>Habari za Hivi Karibuni</h3>
-            <Link href="/admin/news" style={{ fontSize: '.75rem', fontWeight: 700, color: '#00FF41', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '.3rem' }}>
-              Zote <ArrowRight style={{ width: 13, height: 13 }} />
-            </Link>
+      {/* Recent Admissions Table */}
+      <div style={cardStyle}>
+        <div style={{
+          padding: '1.25rem 1.75rem',
+          borderBottom: '1px solid rgba(255,255,255,.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem'
+        }}>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', margin: 0 }}>Maombi ya Udahili ya Hivi Karibuni</h3>
+            <p style={{ fontSize: '0.78125rem', color: 'rgba(255,255,255,.45)', margin: '0.2rem 0 0' }}>Wanafunzi wapya walioomba kujiunga na shule.</p>
           </div>
-          {stats?.recentNews && stats.recentNews.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '.625rem' }}>
-              {stats.recentNews.map(article => (
-                <div key={article.id} style={{ display: 'flex', alignItems: 'center', gap: '.875rem', padding: '.75rem', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)', borderRadius: '.75rem', transition: 'background .2s, border-left-color .2s', borderLeft: '3px solid transparent' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,255,65,.04)'; (e.currentTarget as HTMLElement).style.borderLeftColor = '#00FF41'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; (e.currentTarget as HTMLElement).style.borderLeftColor = 'transparent'; }}
-                >
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#00FF41', flexShrink: 0, boxShadow: '0 0 6px rgba(0,255,65,.5)' }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '.8125rem', fontWeight: 600, color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{article.title}</p>
-                    <p style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.35)', margin: 0, marginTop: '.15rem' }}>{article.category} · {article.publishedAt ? format(new Date(article.publishedAt), 'dd/MM/yyyy') : ''}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ padding: '2.5rem', textAlign: 'center' }}>
-              <p style={{ color: 'rgba(255,255,255,.2)', fontSize: '.8125rem' }}>Hakuna habari bado</p>
-            </div>
-          )}
+          <Link href="/admin/admissions" style={{ textDecoration: 'none' }}>
+            <button style={{
+              padding: '0.5rem 1rem', borderRadius: '0.75rem',
+              background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)',
+              color: '#fff', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer'
+            }}>
+              Tazama Maombi Yote →
+            </button>
+          </Link>
         </div>
 
-        {/* Recent Admissions */}
-        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '1rem', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0 }}>Maombi ya Hivi Karibuni</h3>
-            <Link href="/admin/admissions" style={{ fontSize: '.75rem', fontWeight: 700, color: '#00FF41', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '.3rem' }}>
-              Yote <ArrowRight style={{ width: 13, height: 13 }} />
-            </Link>
+        {recentAdmissions.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '1rem 1.75rem' }}>Namba ya Kumbukumbu</th>
+                  <th style={{ textAlign: 'left', padding: '1rem' }}>Jina la Mwombaji</th>
+                  <th style={{ textAlign: 'center', padding: '1rem' }}>Tarehe</th>
+                  <th style={{ textAlign: 'right', padding: '1rem 1.75rem' }}>Hali</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentAdmissions.map((adm) => (
+                  <tr key={adm.id}>
+                    <td style={{ padding: '0.875rem 1.75rem', fontFamily: 'monospace', color: '#00FF41', fontWeight: 700 }}>
+                      {adm.referenceNo}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', fontWeight: 700, color: '#fff' }}>
+                      {adm.firstName} {adm.lastName}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.8125rem' }}>
+                      {adm.createdAt ? format(new Date(adm.createdAt), 'dd/MM/yyyy') : '-'}
+                    </td>
+                    <td style={{ padding: '0.875rem 1.75rem', textAlign: 'right' }}>
+                      <span className={`badge ${adm.status === 'PENDING' ? 'badge-warning' : adm.status === 'APPROVED' ? 'badge-success' : 'badge-danger'}`}>
+                        {adm.status === 'PENDING' ? 'Inasubiri' : adm.status === 'APPROVED' ? 'Imekubaliwa' : 'Imekataliwa'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          {stats?.recentAdmissions && stats.recentAdmissions.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '.625rem' }}>
-              {stats.recentAdmissions.map(adm => (
-                <div key={adm.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.875rem', padding: '.75rem', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)', borderRadius: '.75rem', transition: 'background .2s' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.05)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
-                    <Clock style={{ width: 15, height: 15, color: 'rgba(255,255,255,.25)', flexShrink: 0 }} />
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: '.8125rem', fontWeight: 600, color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adm.firstName} {adm.lastName}</p>
-                      <p style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.35)', margin: 0, marginTop: '.15rem' }}>{adm.referenceNo}</p>
-                    </div>
-                  </div>
-                  <span className={`badge flex-shrink-0 ${adm.status === 'PENDING' ? 'badge-warning' : adm.status === 'APPROVED' ? 'badge-success' : 'badge-danger'}`}>
-                    {adm.status === 'PENDING' ? 'Inasubiri' : adm.status === 'APPROVED' ? 'Imekubaliwa' : 'Imekataliwa'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ padding: '2.5rem', textAlign: 'center' }}>
-              <p style={{ color: 'rgba(255,255,255,.2)', fontSize: '.8125rem' }}>Hakuna maombi bado</p>
-            </div>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
+        ) : (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+            <ClipboardList style={{ width: 40, height: 40, margin: '0 auto 0.75rem', opacity: 0.4 }} />
+            <p>Hakuna maombi ya udahili yaliyopokelewa kwa sasa.</p>
+          </div>
+        )}
+      </div>
+
+    </div>
   );
 }

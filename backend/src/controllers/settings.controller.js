@@ -94,7 +94,24 @@ const contactForm = async (req, res, next) => {
 
 const getDashboardStats = async (req, res, next) => {
   try {
-    const [students, teachers, pendingAdmissions, upcomingEvents, recentNews, recentAdmissions] = await Promise.all([
+    let settings = await prisma.schoolSettings.findFirst();
+    if (!settings) {
+      settings = await prisma.schoolSettings.create({ data: {} });
+    }
+
+    const form1 = settings.form1Count || 0;
+    const form2 = settings.form2Count || 0;
+    const form3 = settings.form3Count || 0;
+    const form4 = settings.form4Count || 0;
+    const form5 = settings.form5Count || 0;
+    const form6 = settings.form6Count || 0;
+
+    const totalFormStudents = form1 + form2 + form3 + form4 + form5 + form6;
+    const form4Grads = settings.form4Graduates || 0;
+    const form6Grads = settings.form6Graduates || 0;
+    const totalGraduated = form4Grads + form6Grads;
+
+    const [dbStudentCount, teachers, pendingAdmissions, upcomingEvents, recentNews, recentAdmissions] = await Promise.all([
       prisma.student.count({ where: { status: 'ACTIVE' } }),
       prisma.teacher.count({ where: { status: 'ACTIVE' } }),
       prisma.admission.count({ where: { status: 'PENDING' } }),
@@ -102,7 +119,23 @@ const getDashboardStats = async (req, res, next) => {
       prisma.news.findMany({ where: { status: 'PUBLISHED' }, take: 5, orderBy: { publishedAt: 'desc' }, select: { id: true, title: true, publishedAt: true, category: true } }),
       prisma.admission.findMany({ take: 5, orderBy: { createdAt: 'desc' }, select: { id: true, firstName: true, lastName: true, status: true, referenceNo: true, createdAt: true } }),
     ]);
-    res.json({ students, teachers, pendingAdmissions, upcomingEvents, recentNews, recentAdmissions });
+
+    const studentTotal = totalFormStudents > 0 ? totalFormStudents : dbStudentCount;
+
+    res.json({
+      students: studentTotal,
+      graduated: totalGraduated,
+      form4Graduates: form4Grads,
+      form6Graduates: form6Grads,
+      teachers,
+      pendingAdmissions,
+      upcomingEvents,
+      recentNews,
+      recentAdmissions,
+      formCounts: {
+        form1, form2, form3, form4, form5, form6,
+      },
+    });
   } catch (error) {
     next(error);
   }

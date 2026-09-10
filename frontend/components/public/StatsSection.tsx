@@ -1,29 +1,64 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import { studentsApi, teachersApi, settingsApi } from '@/lib/api';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 import { GraduationCap, Users, Clock, Star } from 'lucide-react';
 
-export default async function StatsSection() {
-  let studentTotal = 0, graduated = 0, teacherCount = 0, years = 0;
+export default function StatsSection() {
+  const [statsData, setStatsData] = useState({
+    studentTotal: 0,
+    graduated: 0,
+    teacherCount: 0,
+    years: 36, // Founded 1990
+  });
 
-  try {
-    const [studentsRes, teachersRes, settingsRes] = await Promise.all([
-      studentsApi.getStats(),
-      teachersApi.getAll(),
-      settingsApi.getSettings(),
-    ]);
-    studentTotal = studentsRes.data.total ?? 0;
-    graduated    = studentsRes.data.graduated ?? 0;
-    const td = teachersRes.data.teachers || teachersRes.data;
-    teacherCount = Array.isArray(td) ? td.length : 0;
-    const founded = parseInt(settingsRes.data.founded, 10);
-    years = !isNaN(founded) ? new Date().getFullYear() - founded : 0;
-  } catch { /* 0 is better than fake numbers */ }
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPublicStats = async () => {
+      try {
+        const [studentsRes, teachersRes, settingsRes] = await Promise.all([
+          studentsApi.getStats().catch(() => ({ data: {} })),
+          teachersApi.getAll().catch(() => ({ data: [] })),
+          settingsApi.getSettings().catch(() => ({ data: {} })),
+        ]);
+
+        if (!isMounted) return;
+
+        const sData = studentsRes.data || {};
+        const tData = teachersRes.data?.teachers || teachersRes.data || [];
+        const settData = settingsRes.data || {};
+
+        const studentTotal = sData.total ?? 0;
+        const graduated = sData.graduated ?? 0;
+        const teacherCount = Array.isArray(tData) ? tData.length : 0;
+        
+        const foundedYear = parseInt(settData.founded || '1990', 10);
+        const currentYear = new Date().getFullYear();
+        const years = !isNaN(foundedYear) ? currentYear - foundedYear : 36;
+
+        setStatsData({
+          studentTotal,
+          graduated,
+          teacherCount,
+          years,
+        });
+      } catch (e) {
+        // Keep fallback
+      }
+    };
+
+    fetchPublicStats();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const stats = [
-    { value: studentTotal, suffix: '+', label: 'Wanafunzi Wanaosoma', icon: Users,          desc: 'Jumla ya wanafunzi' },
-    { value: teacherCount, suffix: '',  label: 'Walimu Wataalamu',    icon: Star,          desc: 'Wasomi waliofunzwa' },
-    { value: years,        suffix: '',  label: 'Miaka ya Uzoefu',     icon: Clock,         desc: 'Tangu tulipoanzishwa' },
-    { value: graduated,    suffix: '+', label: 'Wahitimu Waliofaulu', icon: GraduationCap, desc: 'Waliohitimu kwa ufaulu' },
+    { value: statsData.studentTotal, suffix: '+', label: 'Wanafunzi Wanaosoma', icon: Users, desc: 'Jumla ya wanafunzi' },
+    { value: statsData.teacherCount, suffix: '', label: 'Walimu Wataalamu', icon: Star, desc: 'Wasomi waliofunzwa' },
+    { value: statsData.years, suffix: '', label: 'Miaka ya Uzoefu', icon: Clock, desc: 'Tangu tulipoanzishwa' },
+    { value: statsData.graduated, suffix: '+', label: 'Wahitimu Waliofaulu', icon: GraduationCap, desc: 'Waliohitimu kwa ufaulu' },
   ];
 
   return (
@@ -66,7 +101,6 @@ export default async function StatsSection() {
 
               {/* Icon with ring */}
               <div style={{ position: 'relative' }}>
-                {/* Animated ring on hover */}
                 <div style={{ position: 'absolute', inset: -6, borderRadius: '50%', border: '1.5px solid rgba(0,255,65,0)', transition: 'border-color .3s, transform .3s' }} className="stat-ring" />
                 <div
                   style={{
@@ -80,7 +114,7 @@ export default async function StatsSection() {
                 </div>
               </div>
 
-              {/* Number — editorial large */}
+              {/* Number */}
               <div style={{
                 fontFamily: 'var(--f-display)',
                 fontSize: 'clamp(3rem,6.5vw,5rem)',
@@ -90,7 +124,7 @@ export default async function StatsSection() {
                 letterSpacing: '-0.03em',
                 fontStyle: 'italic',
               }}>
-                <AnimatedCounter target={value} suffix={suffix} duration={2000} />
+                <AnimatedCounter target={value} suffix={suffix} duration={1800} />
               </div>
 
               {/* Label */}
