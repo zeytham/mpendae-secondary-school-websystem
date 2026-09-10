@@ -67,6 +67,7 @@ export const studentsApi = {
   getAll: (params?: Record<string, string | number>) => api.get('/students', { params }),
   getOne: (id: string) => api.get(`/students/${id}`),
   getStats: () => api.get('/students/stats'),
+  updateStats: (data: Record<string, number>) => api.put('/students/stats', data),
   create: (formData: FormData) =>
     api.post('/students', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   update: (id: string, formData: FormData) =>

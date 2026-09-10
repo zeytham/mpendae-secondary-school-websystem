@@ -1,300 +1,470 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
+import { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { studentsApi } from '@/lib/api';
-import { Student, FORM_LABELS, Form } from '@/types';
-import DataTable from '@/components/admin/DataTable';
-import Modal from '@/components/admin/Modal';
+import { studentsApi, teachersApi, formatApiError } from '@/lib/api';
+import { FORM_LABELS, Form } from '@/types';
 import {
-  AdminField, AdminInput, AdminSelect, BtnPrimary, BtnSecondary, BtnDanger,
-  IconBtn, AdminPageHeader,
+  AdminPageHeader, BtnPrimary, AdminInput, AdminField,
 } from '@/components/admin/AdminForm';
 import { useToast } from '@/components/ui/Toast';
-import { Plus, Pencil, Trash2, GraduationCap, Loader2, AlertTriangle, UserCircle } from 'lucide-react';
+import {
+  GraduationCap, Users, Award, Save, RefreshCw, Loader2,
+  TrendingUp, CheckCircle2, BarChart2, Plus, Minus
+} from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts';
 
-const FORMS: Form[] = ['FORM_1', 'FORM_2', 'FORM_3', 'FORM_4', 'FORM_5', 'FORM_6'];
+const FORMS: { key: string; label: string; formEnum: Form }[] = [
+  { key: 'form1', label: 'Kidato cha Kwanza (Form 1)', formEnum: 'FORM_1' },
+  { key: 'form2', label: 'Kidato cha Pili (Form 2)', formEnum: 'FORM_2' },
+  { key: 'form3', label: 'Kidato cha Tatu (Form 3)', formEnum: 'FORM_3' },
+  { key: 'form4', label: 'Kidato cha Nne (Form 4)', formEnum: 'FORM_4' },
+  { key: 'form5', label: 'Kidato cha Tano (Form 5)', formEnum: 'FORM_5' },
+  { key: 'form6', label: 'Kidato cha Sura (Form 6)', formEnum: 'FORM_6' },
+];
 
-interface StudentForm {
-  firstName: string; lastName: string; gender: string; dateOfBirth: string; form: string;
-  stream: string; parentName: string; parentPhone: string; parentEmail: string; address: string; status: string;
-}
+const CHART_COLORS = ['#00FF41', '#3d8ef8', '#ffa502', '#ff4757', '#9b59b6', '#00e5ff'];
 
-const emptyForm: StudentForm = {
-  firstName: '', lastName: '', gender: 'MALE', dateOfBirth: '', form: 'FORM_1',
-  stream: 'A', parentName: '', parentPhone: '', parentEmail: '', address: '', status: 'ACTIVE',
+const cardStyle: React.CSSProperties = {
+  background: 'rgba(255, 255, 255, 0.03)',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  borderRadius: '1.25rem',
+  overflow: 'hidden',
+  backdropFilter: 'blur(12px)',
 };
 
-const statusBadge = (status: string) => {
-  const map: Record<string, { label: string; bg: string; color: string; border: string }> = {
-    ACTIVE:      { label: 'Anasoma',    bg: 'rgba(0,255,65,.1)',    color: '#00FF41', border: 'rgba(0,255,65,.3)' },
-    INACTIVE:    { label: 'Hayasomi',  bg: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.5)', border: 'rgba(255,255,255,.12)' },
-    GRADUATED:   { label: 'Amehitimu', bg: 'rgba(61,142,248,.1)',  color: '#3d8ef8', border: 'rgba(61,142,248,.3)' },
-    TRANSFERRED: { label: 'Amehamia',  bg: 'rgba(255,165,2,.1)',   color: '#ffa502', border: 'rgba(255,165,2,.3)' },
-  };
-  const s = map[status] || map.INACTIVE;
-  return (
-    <span style={{ padding: '.18rem .65rem', borderRadius: 999, fontSize: '.65rem', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-      {s.label}
-    </span>
-  );
+const tooltipStyle = {
+  background: '#060d08',
+  border: '1px solid rgba(0, 255, 65, 0.25)',
+  borderRadius: 12,
+  color: '#fff',
+  fontSize: 13,
 };
 
-export default function StudentsPage() {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
-  const [search, setSearch] = useState('');
-  const [formFilter, setFormFilter] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [deleteModal, setDeleteModal] = useState<Student | null>(null);
-  const [editStudent, setEditStudent] = useState<Student | null>(null);
-  const [formData, setFormData] = useState<StudentForm>(emptyForm);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+export default function StudentStatsAdminPage() {
   const { toast } = useToast();
 
-  const set = (k: keyof StudentForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setFormData(p => ({ ...p, [k]: e.target.value }));
+  const [formCounts, setFormCounts] = useState({
+    form1: 0,
+    form2: 0,
+    form3: 0,
+    form4: 0,
+    form5: 0,
+    form6: 0,
+  });
 
-  const fetchStudents = useCallback(async (page = 1, q = search, f = formFilter) => {
-    setIsLoading(true);
+  const [graduateCounts, setGraduateCounts] = useState({
+    form4Graduates: 0,
+    form6Graduates: 0,
+  });
+
+  const [teacherTotal, setTeacherTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    setLoading(true);
     try {
-      const res = await studentsApi.getAll({ page, limit: 20, search: q, form: f });
-      setStudents(res.data.students);
-      setPagination(res.data.pagination);
-    } catch { toast('Hitilafu ya kupakia wanafunzi', 'error'); }
-    setIsLoading(false);
-  }, [search, formFilter, toast]);
+      const [statsRes, teachersRes] = await Promise.all([
+        studentsApi.getStats(),
+        teachersApi.getAll(),
+      ]);
 
-  useEffect(() => { fetchStudents(); }, []);
+      const data = statsRes.data;
+      if (data.formCounts) {
+        setFormCounts({
+          form1: Number(data.formCounts.form1) || 0,
+          form2: Number(data.formCounts.form2) || 0,
+          form3: Number(data.formCounts.form3) || 0,
+          form4: Number(data.formCounts.form4) || 0,
+          form5: Number(data.formCounts.form5) || 0,
+          form6: Number(data.formCounts.form6) || 0,
+        });
+      }
 
-  const openAdd = () => { setEditStudent(null); setFormData(emptyForm); setPhotoFile(null); setModalOpen(true); };
-  const openEdit = (s: Student) => {
-    setEditStudent(s);
-    setFormData({
-      firstName: s.firstName, lastName: s.lastName, gender: s.gender,
-      dateOfBirth: s.dateOfBirth.split('T')[0], form: s.form, stream: s.stream || 'A',
-      parentName: s.parentName, parentPhone: s.parentPhone, parentEmail: s.parentEmail || '',
-      address: s.address || '', status: s.status,
-    });
-    setPhotoFile(null);
-    setModalOpen(true);
+      setGraduateCounts({
+        form4Graduates: Number(data.form4Graduates) || 0,
+        form6Graduates: Number(data.form6Graduates) || 0,
+      });
+
+      const teacherData = teachersRes.data.teachers || teachersRes.data;
+      setTeacherTotal(Array.isArray(teacherData) ? teacherData.length : 0);
+    } catch (err) {
+      toast(formatApiError(err, 'Hitilafu ya kupakia takwimu'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* Calculated Totals */
+  const totalStudents = useMemo(() => {
+    return Object.values(formCounts).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
+  }, [formCounts]);
+
+  const totalGraduates = useMemo(() => {
+    return (Number(graduateCounts.form4Graduates) || 0) + (Number(graduateCounts.form6Graduates) || 0);
+  }, [graduateCounts]);
+
+  /* Form Chart Data */
+  const chartData = useMemo(() => {
+    return FORMS.map((f) => ({
+      name: FORM_LABELS[f.formEnum] || f.key,
+      Wanafunzi: formCounts[f.key as keyof typeof formCounts] || 0,
+    }));
+  }, [formCounts]);
+
+  const graduatePieData = useMemo(() => {
+    return [
+      { name: 'Wahitimu Form 4', value: Number(graduateCounts.form4Graduates) || 0 },
+      { name: 'Wahitimu Form 6', value: Number(graduateCounts.form6Graduates) || 0 },
+    ].filter((d) => d.value > 0);
+  }, [graduateCounts]);
+
+  const handleFormCountChange = (key: keyof typeof formCounts, val: number) => {
+    setFormCounts((prev) => ({ ...prev, [key]: Math.max(0, val) }));
+  };
+
+  const handleGradCountChange = (key: keyof typeof graduateCounts, val: number) => {
+    setGraduateCounts((prev) => ({ ...prev, [key]: Math.max(0, val) }));
   };
 
   const handleSave = async () => {
-    if (!formData.firstName || !formData.lastName || !formData.dateOfBirth || !formData.parentName || !formData.parentPhone) {
-      toast('Tafadhali jaza nyanja zote zinazohitajika', 'warning');
-      return;
+    setSaving(true);
+    try {
+      const payload = {
+        form1Count: Number(formCounts.form1) || 0,
+        form2Count: Number(formCounts.form2) || 0,
+        form3Count: Number(formCounts.form3) || 0,
+        form4Count: Number(formCounts.form4) || 0,
+        form5Count: Number(formCounts.form5) || 0,
+        form6Count: Number(formCounts.form6) || 0,
+        form4Graduates: Number(graduateCounts.form4Graduates) || 0,
+        form6Graduates: Number(graduateCounts.form6Graduates) || 0,
+      };
+
+      await studentsApi.updateStats(payload);
+      toast('Takwimu za Wanafunzi na Wahitimu zimesasishwa vyema! ✓', 'success');
+    } catch (err) {
+      toast(formatApiError(err, 'Imefeli kuhifadhi takwimu'), 'error');
+    } finally {
+      setSaving(false);
     }
-    setIsSaving(true);
-    try {
-      const fd = new FormData();
-      Object.entries(formData).forEach(([k, v]) => fd.append(k, v));
-      if (photoFile) fd.append('photo', photoFile);
-      if (editStudent) {
-        await studentsApi.update(editStudent.id, fd);
-        toast('Mwanafunzi amesasishwa ✓', 'success');
-      } else {
-        await studentsApi.create(fd);
-        toast('Mwanafunzi ameongezwa ✓', 'success');
-      }
-      setModalOpen(false);
-      fetchStudents();
-    } catch (e: unknown) {
-      toast((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Hitilafu imetokea', 'error');
-    } finally { setIsSaving(false); }
   };
-
-  const handleDelete = async (student: Student) => {
-    try {
-      await studentsApi.delete(student.id);
-      toast('Mwanafunzi amefutwa', 'success');
-      setDeleteModal(null);
-      fetchStudents();
-    } catch { toast('Hitilafu ya kufuta', 'error'); }
-  };
-
-  const columns = [
-    {
-      key: 'photo', label: 'Picha', width: '52px',
-      render: (s: Student) => (
-        <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(0,255,65,.2)', background: 'rgba(0,255,65,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {s.photo
-            ? <Image src={s.photo} alt={s.firstName} width={36} height={36} style={{ objectFit: 'cover' }} />
-            : <span style={{ color: 'var(--c-lime)', fontWeight: 800, fontSize: '.875rem' }}>{s.firstName[0]}</span>
-          }
-        </div>
-      ),
-    },
-    { key: 'regNumber', label: 'Nambari',
-      render: (s: Student) => <span style={{ fontFamily: 'monospace', fontSize: '.8rem', color: 'rgba(255,255,255,.55)', letterSpacing: '.04em' }}>{s.regNumber}</span>
-    },
-    { key: 'firstName', label: 'Jina Kamili',
-      render: (s: Student) => <span style={{ fontWeight: 700, color: '#fff' }}>{s.firstName} {s.lastName}</span>
-    },
-    { key: 'form', label: 'Darasa',
-      render: (s: Student) => (
-        <span style={{ padding: '.18rem .65rem', borderRadius: 999, fontSize: '.65rem', fontWeight: 800, background: 'rgba(96,165,250,.1)', color: '#60A5FA', border: '1px solid rgba(96,165,250,.25)', letterSpacing: '.06em' }}>
-          {FORM_LABELS[s.form]}{s.stream ? ` ${s.stream}` : ''}
-        </span>
-      ),
-    },
-    { key: 'gender', label: 'Jinsia', render: (s: Student) => <span style={{ color: 'rgba(255,255,255,.55)', fontSize: '.82rem' }}>{s.gender === 'MALE' ? 'Mume' : 'Mke'}</span> },
-    { key: 'parentPhone', label: 'Simu ya Mzazi', render: (s: Student) => <span style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.6)', fontFamily: 'monospace' }}>{s.parentPhone}</span> },
-    { key: 'status', label: 'Hali', render: (s: Student) => statusBadge(s.status) },
-  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem', paddingBottom: '3rem' }}>
+      
+      {/* Header */}
       <AdminPageHeader
-        title="Wanafunzi"
-        subtitle={`Jumla ya wanafunzi: ${pagination.total}`}
+        title="Usimamizi wa Takwimu za Wanafunzi na Wahitimu"
+        subtitle="Weka na usasishe idadi ya wanafunzi kwa kila darasa (Form 1 - Form 6) na wahitimu watakaotokea mtandaoni."
         actions={
-          <BtnPrimary onClick={openAdd}>
-            <Plus style={{ width: 16, height: 16 }} /> Ongeza Mwanafunzi
-          </BtnPrimary>
-        }
-      />
-
-      <DataTable
-        columns={columns}
-        data={students}
-        isLoading={isLoading}
-        totalPages={pagination.pages}
-        currentPage={pagination.page}
-        total={pagination.total}
-        onPageChange={p => fetchStudents(p)}
-        onSearch={q => { setSearch(q); fetchStudents(1, q, formFilter); }}
-        onRefresh={() => fetchStudents()}
-        searchPlaceholder="Tafuta kwa jina au nambari..."
-        emptyMessage="Hakuna wanafunzi. Ongeza wanafunzi wapya."
-        emptyIcon={<GraduationCap style={{ width: 40, height: 40, color: 'rgba(255,255,255,.08)' }} />}
-        filters={
-          <AdminSelect
-            value={formFilter}
-            onChange={e => { setFormFilter(e.target.value); fetchStudents(1, search, e.target.value); }}
-            style={{ padding: '.5rem .875rem', minWidth: 130, fontSize: '.82rem', borderRadius: '.75rem' }}
-          >
-            <option value="">Madarasa Yote</option>
-            {FORMS.map(f => <option key={f} value={f}>{FORM_LABELS[f]}</option>)}
-          </AdminSelect>
-        }
-        actions={(s: Student) => (
-          <>
-            <IconBtn color="lime" onClick={() => openEdit(s)} title="Hariri">
-              <Pencil style={{ width: 13, height: 13 }} />
-            </IconBtn>
-            <IconBtn color="danger" onClick={() => setDeleteModal(s)} title="Futa">
-              <Trash2 style={{ width: 13, height: 13 }} />
-            </IconBtn>
-          </>
-        )}
-      />
-
-      {/* ── Add/Edit Modal ── */}
-      <Modal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editStudent ? 'Hariri Mwanafunzi' : 'Ongeza Mwanafunzi Mpya'}
-        subtitle={editStudent ? `${editStudent.firstName} ${editStudent.lastName}` : 'Jaza taarifa zote za mwanafunzi mpya'}
-        size="lg"
-        headerIcon={<GraduationCap style={{ width: 20, height: 20 }} />}
-        footer={
-          <>
-            <BtnSecondary onClick={() => setModalOpen(false)}>Ghairi</BtnSecondary>
-            <BtnPrimary onClick={handleSave} disabled={isSaving}>
-              {isSaving ? <><Loader2 style={{ width: 15, height: 15, animation: 'spin 1s linear infinite' }} /> Inahifadhi...</> : 'Hifadhi'}
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={fetchStats}
+              disabled={loading || saving}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.625rem 1.125rem', borderRadius: '0.875rem',
+                background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)',
+                color: '#fff', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer'
+              }}
+            >
+              <RefreshCw style={{ width: 15, height: 15 }} /> Refresh
+            </button>
+            <BtnPrimary onClick={handleSave} disabled={saving || loading}>
+              {saving ? (
+                <><Loader2 style={{ width: 15, height: 15, animation: 'spin 1s linear infinite' }} /> Inahifadhi...</>
+              ) : (
+                <><Save style={{ width: 15, height: 15 }} /> Hifadhi Mabadiliko</>
+              )}
             </BtnPrimary>
-          </>
-        }
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.1rem' }}>
-          <AdminField label="Jina la Kwanza" required>
-            <AdminInput value={formData.firstName} onChange={set('firstName')} placeholder="Jina la kwanza" />
-          </AdminField>
-          <AdminField label="Jina la Pili" required>
-            <AdminInput value={formData.lastName} onChange={set('lastName')} placeholder="Jina la ukoo" />
-          </AdminField>
-          <AdminField label="Jinsia">
-            <AdminSelect value={formData.gender} onChange={set('gender')}>
-              <option value="MALE">Mume</option>
-              <option value="FEMALE">Mke</option>
-            </AdminSelect>
-          </AdminField>
-          <AdminField label="Tarehe ya Kuzaliwa" required>
-            <AdminInput type="date" value={formData.dateOfBirth} onChange={set('dateOfBirth')} />
-          </AdminField>
-          <AdminField label="Darasa">
-            <AdminSelect value={formData.form} onChange={set('form')}>
-              {FORMS.map(f => <option key={f} value={f}>{FORM_LABELS[f]}</option>)}
-            </AdminSelect>
-          </AdminField>
-          <AdminField label="Stream">
-            <AdminInput value={formData.stream} onChange={set('stream')} placeholder="Mfano: A, B" />
-          </AdminField>
-          <AdminField label="Jina la Mzazi/Mlezi" required>
-            <AdminInput value={formData.parentName} onChange={set('parentName')} placeholder="Jina kamili" />
-          </AdminField>
-          <AdminField label="Simu ya Mzazi" required>
-            <AdminInput value={formData.parentPhone} onChange={set('parentPhone')} placeholder="+255 7XX XXX XXX" />
-          </AdminField>
-          <AdminField label="Barua Pepe ya Mzazi">
-            <AdminInput type="email" value={formData.parentEmail} onChange={set('parentEmail')} placeholder="barua@pepe.com" />
-          </AdminField>
-          <AdminField label="Anwani">
-            <AdminInput value={formData.address} onChange={set('address')} placeholder="Mtaa, Wilaya" />
-          </AdminField>
-          <AdminField label="Hali">
-            <AdminSelect value={formData.status} onChange={set('status')}>
-              <option value="ACTIVE">Anasoma</option>
-              <option value="INACTIVE">Hayasomi</option>
-              <option value="GRADUATED">Amehitimu</option>
-              <option value="TRANSFERRED">Amehamia</option>
-            </AdminSelect>
-          </AdminField>
-          <AdminField label="Picha ya Mwanafunzi">
-            <input
-              type="file" accept="image/*"
-              onChange={e => setPhotoFile(e.target.files?.[0] || null)}
-              style={{ width: '100%', fontSize: '.82rem', color: 'rgba(255,255,255,.6)', cursor: 'pointer' }}
-            />
-          </AdminField>
-        </div>
-      </Modal>
-
-      {/* ── Delete Confirm Modal ── */}
-      <Modal
-        isOpen={!!deleteModal}
-        onClose={() => setDeleteModal(null)}
-        title="Thibitisha Kufuta"
-        size="sm"
-        footer={
-          <>
-            <BtnSecondary onClick={() => setDeleteModal(null)}>Ghairi</BtnSecondary>
-            <BtnDanger onClick={() => deleteModal && handleDelete(deleteModal)}>
-              <Trash2 style={{ width: 14, height: 14 }} /> Futa
-            </BtnDanger>
-          </>
-        }
-      >
-        <motion.div
-          initial={{ scale: .95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          style={{ textAlign: 'center', padding: '1rem 0' }}
-        >
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,71,87,.1)', border: '1px solid rgba(255,71,87,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
-            <AlertTriangle style={{ width: 28, height: 28, color: '#ff4757' }} />
           </div>
-          <p style={{ color: 'rgba(255,255,255,.6)', marginBottom: '.75rem', fontSize: '.9rem', lineHeight: 1.6 }}>
-            Una uhakika wa kufuta mwanafunzi:
+        }
+      />
+
+      {/* Top Stat Overview Banner */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
+        
+        <div style={{ ...cardStyle, padding: '1.5rem', background: 'linear-gradient(135deg, rgba(0,255,65,0.09) 0%, rgba(255,255,255,0.02) 100%)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Jumla ya Wanafunzi</p>
+            <GraduationCap style={{ color: '#00FF41', width: 24, height: 24 }} />
+          </div>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#fff', margin: '0.5rem 0 0' }}>{totalStudents}</h2>
+          <p style={{ fontSize: '0.75rem', color: '#00FF41', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <TrendingUp style={{ width: 14, height: 14 }} /> Form 1 hanga Form 6 kwa jumla
           </p>
-          <p style={{ color: 'var(--c-lime)', fontWeight: 800, fontSize: '1.1rem', margin: 0 }}>
-            {deleteModal?.firstName} {deleteModal?.lastName}
+        </div>
+
+        <div style={{ ...cardStyle, padding: '1.5rem', background: 'linear-gradient(135deg, rgba(61,142,248,0.09) 0%, rgba(255,255,255,0.02) 100%)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Jumla ya Wahitimu</p>
+            <Award style={{ color: '#3d8ef8', width: 24, height: 24 }} />
+          </div>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#3d8ef8', margin: '0.5rem 0 0' }}>{totalGraduates}</h2>
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.35rem' }}>
+            Form 4 ({graduateCounts.form4Graduates}) na Form 6 ({graduateCounts.form6Graduates})
           </p>
-          <p style={{ color: 'rgba(255,255,255,.35)', fontSize: '.78rem', marginTop: '.5rem' }}>Hatua hii haiwezi kurudishwa.</p>
-        </motion.div>
-      </Modal>
+        </div>
+
+        <div style={{ ...cardStyle, padding: '1.5rem', background: 'linear-gradient(135deg, rgba(255,165,2,0.09) 0%, rgba(255,255,255,0.02) 100%)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Walimu Waliosajiliwa</p>
+            <Users style={{ color: '#ffa502', width: 24, height: 24 }} />
+          </div>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffa502', margin: '0.5rem 0 0' }}>{teacherTotal}</h2>
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.35rem' }}>
+            Inatokana na walimu waliosajiliwa
+          </p>
+        </div>
+
+      </div>
+
+      {/* Main Form & Graduate Input Grids */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
+        
+        {/* 1. Student Counts By Form */}
+        <div style={{ ...cardStyle, padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.625rem', margin: 0 }}>
+              <GraduationCap style={{ color: '#00FF41', width: 20, height: 20 }} />
+              Idadi ya Wanafunzi kwa Darasa (Form 1 - Form 6)
+            </h3>
+            <p style={{ fontSize: '0.78125rem', color: 'rgba(255,255,255,.45)', marginTop: '0.25rem' }}>
+              Badilisha idadi ya wanafunzi waliopo shuleni hapa. Jumla itahesabiwa mara moja.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {FORMS.map((f, idx) => {
+              const currentVal = formCounts[f.key as keyof typeof formCounts] || 0;
+              const pct = totalStudents > 0 ? ((currentVal / totalStudents) * 100).toFixed(1) : '0.0';
+
+              return (
+                <div
+                  key={f.key}
+                  style={{
+                    background: 'rgba(255,255,255,.025)',
+                    border: '1px solid rgba(255,255,255,.07)',
+                    borderRadius: '1rem',
+                    padding: '1rem 1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                      <span style={{
+                        width: 26, height: 26, borderRadius: '50%',
+                        background: 'rgba(0,255,65,0.1)', color: '#00FF41',
+                        fontSize: '0.75rem', fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {idx + 1}
+                      </span>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>{f.label}</span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{pct}% ya wanafunzi</span>
+                  </div>
+
+                  {/* Input and Increment Controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleFormCountChange(f.key as keyof typeof formCounts, currentVal - 1)}
+                      style={{
+                        width: 38, height: 38, borderRadius: '0.625rem',
+                        background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
+                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', flexShrink: 0
+                      }}
+                    >
+                      <Minus style={{ width: 16, height: 16 }} />
+                    </button>
+                    <AdminInput
+                      type="number"
+                      min={0}
+                      value={currentVal}
+                      onChange={(e) => handleFormCountChange(f.key as keyof typeof formCounts, parseInt(e.target.value) || 0)}
+                      style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 800, color: '#00FF41' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormCountChange(f.key as keyof typeof formCounts, currentVal + 1)}
+                      style={{
+                        width: 38, height: 38, borderRadius: '0.625rem',
+                        background: 'rgba(0,255,65,.15)', border: '1px solid rgba(0,255,65,.3)',
+                        color: '#00FF41', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', flexShrink: 0
+                      }}
+                    >
+                      <Plus style={{ width: 16, height: 16 }} />
+                    </button>
+                  </div>
+
+                  {/* Mini Progress Bar */}
+                  <div style={{ background: 'rgba(255,255,255,.08)', height: 4, borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${Math.min(100, Math.max(0, parseFloat(pct)))}%`,
+                      background: CHART_COLORS[idx % CHART_COLORS.length],
+                      height: '100%', borderRadius: 999, transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. Graduate Counts Section */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          
+          <div style={{ ...cardStyle, padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.625rem', margin: 0 }}>
+                <Award style={{ color: '#3d8ef8', width: 20, height: 20 }} />
+                Idadi ya Wahitimu (Form 4 & Form 6)
+              </h3>
+              <p style={{ fontSize: '0.78125rem', color: 'rgba(255,255,255,.45)', marginTop: '0.25rem' }}>
+                Weka idadi ya wahitimu waliofaulu masomo yao kwa Form 4 na Form 6.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              
+              {/* Form 4 Graduates */}
+              <div style={{
+                background: 'rgba(61,142,248,.05)', border: '1px solid rgba(61,142,248,.15)',
+                borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem'
+              }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>Wahitimu wa Form 4</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleGradCountChange('form4Graduates', graduateCounts.form4Graduates - 1)}
+                    style={{
+                      width: 38, height: 38, borderRadius: '0.625rem',
+                      background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
+                      color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }}
+                  >
+                    <Minus style={{ width: 16, height: 16 }} />
+                  </button>
+                  <AdminInput
+                    type="number"
+                    min={0}
+                    value={graduateCounts.form4Graduates}
+                    onChange={(e) => handleGradCountChange('form4Graduates', parseInt(e.target.value) || 0)}
+                    style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 800, color: '#3d8ef8' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleGradCountChange('form4Graduates', graduateCounts.form4Graduates + 1)}
+                    style={{
+                      width: 38, height: 38, borderRadius: '0.625rem',
+                      background: 'rgba(61,142,248,.2)', border: '1px solid rgba(61,142,248,.4)',
+                      color: '#3d8ef8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }}
+                  >
+                    <Plus style={{ width: 16, height: 16 }} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Form 6 Graduates */}
+              <div style={{
+                background: 'rgba(155,89,182,.05)', border: '1px solid rgba(155,89,182,.15)',
+                borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem'
+              }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>Wahitimu wa Form 6</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleGradCountChange('form6Graduates', graduateCounts.form6Graduates - 1)}
+                    style={{
+                      width: 38, height: 38, borderRadius: '0.625rem',
+                      background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
+                      color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }}
+                  >
+                    <Minus style={{ width: 16, height: 16 }} />
+                  </button>
+                  <AdminInput
+                    type="number"
+                    min={0}
+                    value={graduateCounts.form6Graduates}
+                    onChange={(e) => handleGradCountChange('form6Graduates', parseInt(e.target.value) || 0)}
+                    style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 800, color: '#9b59b6' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleGradCountChange('form6Graduates', graduateCounts.form6Graduates + 1)}
+                    style={{
+                      width: 38, height: 38, borderRadius: '0.625rem',
+                      background: 'rgba(155,89,182,.2)', border: '1px solid rgba(155,89,182,.4)',
+                      color: '#9b59b6', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }}
+                  >
+                    <Plus style={{ width: 16, height: 16 }} />
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Quick Realtime Preview Chart */}
+          <div style={{ ...cardStyle, padding: '1.5rem' }}>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <BarChart2 style={{ width: 16, height: 16, color: '#00FF41' }} /> Chati ya Mgawanyo wa Madarasa
+            </h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,.5)', fontSize: 10 }} />
+                <YAxis tick={{ fill: 'rgba(255,255,255,.5)', fontSize: 10 }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="Wanafunzi" fill="#00FF41" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Bottom Save Action Bar */}
+      <div style={{
+        ...cardStyle, padding: '1.25rem 1.75rem',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem',
+        border: '1px solid rgba(0, 255, 65, 0.25)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <CheckCircle2 style={{ color: '#00FF41', width: 22, height: 22 }} />
+          <div>
+            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff', margin: 0 }}>Uko Tayari Kuhifadhi?</p>
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,.45)', margin: 0 }}>Mabadiliko ya idadi hii yatatumika moja kwa moja kwenye kurasa za Umma (Home & Academics).</p>
+          </div>
+        </div>
+
+        <BtnPrimary onClick={handleSave} disabled={saving || loading}>
+          {saving ? (
+            <><Loader2 style={{ width: 15, height: 15, animation: 'spin 1s linear infinite' }} /> Inahifadhi Mabadiliko...</>
+          ) : (
+            <><Save style={{ width: 15, height: 15 }} /> Hifadhi Sasa</>
+          )}
+        </BtnPrimary>
+      </div>
+
     </div>
   );
 }

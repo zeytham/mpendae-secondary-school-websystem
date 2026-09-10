@@ -19,11 +19,11 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: 'Watu',
+    label: 'Takwimu & Watu',
     items: [
-      { label: 'Wanafunzi', href: '/admin/students', icon: GraduationCap },
-      { label: 'Walimu',    href: '/admin/teachers',  icon: Users },
-      { label: 'Usajili',   href: '/admin/admissions',icon: ClipboardList },
+      { label: 'Takwimu & Wahitimu', href: '/admin/students', icon: GraduationCap },
+      { label: 'Walimu',           href: '/admin/teachers', icon: Users },
+      { label: 'Usajili',          href: '/admin/admissions', icon: ClipboardList },
     ],
   },
   {
@@ -37,10 +37,9 @@ const NAV_GROUPS = [
   {
     label: 'Mfumo',
     items: [
-      { label: 'Ratiba',      href: '/admin/timetable',  icon: BookOpen },
-      { label: 'Mahudhurio',  href: '/admin/attendance', icon: ClipboardCheck },
-      { label: 'Ripoti',      href: '/admin/reports',    icon: BarChart3 },
-      { label: 'Mipangilio',  href: '/admin/settings',   icon: Settings },
+      { label: 'Ratiba',      href: '/admin/timetable', icon: BookOpen },
+      { label: 'Ripoti',      href: '/admin/reports',   icon: BarChart3 },
+      { label: 'Mipangilio',  href: '/admin/settings',  icon: Settings },
     ],
   },
 ];

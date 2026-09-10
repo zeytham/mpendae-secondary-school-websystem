@@ -222,6 +222,16 @@ model SchoolSettings {
   instagram  String?
   youtube    String?
   whatsapp   String?
+
+  // Aggregate student and graduate counts
+  form1Count     Int  @default(0)
+  form2Count     Int  @default(0)
+  form3Count     Int  @default(0)
+  form4Count     Int  @default(0)
+  form5Count     Int  @default(0)
+  form6Count     Int  @default(0)
+  form4Graduates Int  @default(0)
+  form6Graduates Int  @default(0)
 }
 
 model Milestone {
