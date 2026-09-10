@@ -149,8 +149,23 @@ export default function StudentStatsAdminPage() {
         form6Graduates: Number(graduateCounts.form6Graduates) || 0,
       };
 
-      await studentsApi.updateStats(payload);
-      toast('Takwimu za Wanafunzi na Wahitimu zimesasishwa vyema! ✓', 'success');
+      const res = await studentsApi.updateStats(payload);
+      if (res.data?.settings) {
+        const s = res.data.settings;
+        setFormCounts({
+          form1: Number(s.form1Count) || 0,
+          form2: Number(s.form2Count) || 0,
+          form3: Number(s.form3Count) || 0,
+          form4: Number(s.form4Count) || 0,
+          form5: Number(s.form5Count) || 0,
+          form6: Number(s.form6Count) || 0,
+        });
+        setGraduateCounts({
+          form4Graduates: Number(s.form4Graduates) || 0,
+          form6Graduates: Number(s.form6Graduates) || 0,
+        });
+      }
+      toast('Takwimu za Wanafunzi na Wahitimu zimesasishwa vyema kwenye Database! ✓', 'success');
     } catch (err) {
       toast(formatApiError(err, 'Imefeli kuhifadhi takwimu'), 'error');
     } finally {

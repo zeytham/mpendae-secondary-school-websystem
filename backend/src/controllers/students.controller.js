@@ -179,9 +179,6 @@ const getStats = async (req, res, next) => {
     const form6Grads = settings.form6Graduates || 0;
     const totalGraduated = form4Grads + form6Grads;
 
-    const activeDbStudents = await prisma.student.count({ where: { status: 'ACTIVE' } });
-    const finalTotal = totalStudents > 0 ? totalStudents : activeDbStudents;
-
     const byForm = [
       { form: 'FORM_1', _count: { id: form1 } },
       { form: 'FORM_2', _count: { id: form2 } },
@@ -192,17 +189,17 @@ const getStats = async (req, res, next) => {
     ];
 
     const byGender = [
-      { gender: 'MALE', _count: { id: Math.ceil(finalTotal * 0.52) } },
-      { gender: 'FEMALE', _count: { id: Math.floor(finalTotal * 0.48) } },
+      { gender: 'MALE', _count: { id: Math.ceil(totalStudents * 0.52) } },
+      { gender: 'FEMALE', _count: { id: Math.floor(totalStudents * 0.48) } },
     ];
 
     const byStatus = [
-      { status: 'ACTIVE', _count: { id: finalTotal } },
+      { status: 'ACTIVE', _count: { id: totalStudents } },
       { status: 'GRADUATED', _count: { id: totalGraduated } },
     ];
 
     res.json({
-      total: finalTotal,
+      total: totalStudents,
       byForm,
       byGender,
       byStatus,
@@ -211,6 +208,7 @@ const getStats = async (req, res, next) => {
       form6Graduates: form6Grads,
       formCounts: {
         form1, form2, form3, form4, form5, form6,
+        FORM_1: form1, FORM_2: form2, FORM_3: form3, FORM_4: form4, FORM_5: form5, FORM_6: form6,
       },
     });
   } catch (error) {
@@ -225,22 +223,35 @@ const updateStudentCounts = async (req, res, next) => {
       settings = await prisma.schoolSettings.create({ data: {} });
     }
 
-    const {
-      form1Count, form2Count, form3Count, form4Count, form5Count, form6Count,
-      form4Graduates, form6Graduates,
-    } = req.body;
+    const parseNum = (val, currentVal) => {
+      if (val === undefined || val === null) return currentVal;
+      const num = parseInt(val, 10);
+      return isNaN(num) ? currentVal : Math.max(0, num);
+    };
+
+    const b = req.body || {};
+
+    const form1 = parseNum(b.form1Count ?? b.form1 ?? b.FORM_1, settings.form1Count);
+    const form2 = parseNum(b.form2Count ?? b.form2 ?? b.FORM_2, settings.form2Count);
+    const form3 = parseNum(b.form3Count ?? b.form3 ?? b.FORM_3, settings.form3Count);
+    const form4 = parseNum(b.form4Count ?? b.form4 ?? b.FORM_4, settings.form4Count);
+    const form5 = parseNum(b.form5Count ?? b.form5 ?? b.FORM_5, settings.form5Count);
+    const form6 = parseNum(b.form6Count ?? b.form6 ?? b.FORM_6, settings.form6Count);
+
+    const f4Grads = parseNum(b.form4Graduates ?? b.form4Grads, settings.form4Graduates);
+    const f6Grads = parseNum(b.form6Graduates ?? b.form6Grads, settings.form6Graduates);
 
     const updated = await prisma.schoolSettings.update({
       where: { id: settings.id },
       data: {
-        form1Count: Number(form1Count) || 0,
-        form2Count: Number(form2Count) || 0,
-        form3Count: Number(form3Count) || 0,
-        form4Count: Number(form4Count) || 0,
-        form5Count: Number(form5Count) || 0,
-        form6Count: Number(form6Count) || 0,
-        form4Graduates: Number(form4Graduates) || 0,
-        form6Graduates: Number(form6Graduates) || 0,
+        form1Count: form1,
+        form2Count: form2,
+        form3Count: form3,
+        form4Count: form4,
+        form5Count: form5,
+        form6Count: form6,
+        form4Graduates: f4Grads,
+        form6Graduates: f6Grads,
       },
     });
 
