@@ -135,10 +135,10 @@ export default function AcademicsPage() {
   const [loadingTimetables, setLoadingTimetables] = useState(true);
 
   /* Dynamic stats */
-  const [studentTotal, setStudentTotal] = useState(850);
-  const [teacherTotal, setTeacherTotal] = useState(35);
-  const [passRateVal, setPassRateVal] = useState(98);
-  const [foundedYears, setFoundedYears] = useState(35);
+  const [studentTotal, setStudentTotal] = useState(0);
+  const [teacherTotal, setTeacherTotal] = useState(0);
+  const [passRateVal, setPassRateVal] = useState(0);
+  const [foundedYears, setFoundedYears] = useState(36);
 
   /* Brochure modal state */
   const [showBrochureModal, setShowBrochureModal] = useState(false);
@@ -148,11 +148,15 @@ export default function AcademicsPage() {
       setTimetables(res.data.timetables || res.data || []);
     }).catch(() => {}).finally(() => setLoadingTimetables(false));
 
-    studentsApi.getStats().then(r => { if (r.data?.total) setStudentTotal(r.data.total); }).catch(() => {});
+    studentsApi.getStats().then(r => {
+      if (r.data?.total !== undefined) setStudentTotal(r.data.total);
+    }).catch(() => {});
+    
     teachersApi.getAll().then(r => {
       const len = Array.isArray(r.data) ? r.data.length : (r.data?.teachers?.length || 0);
-      if (len) setTeacherTotal(len);
+      setTeacherTotal(len);
     }).catch(() => {});
+
     settingsApi.getSettings().then(r => {
       if (r.data?.nectaPassRate) {
         const p = parseInt(r.data.nectaPassRate, 10);
@@ -164,10 +168,10 @@ export default function AcademicsPage() {
   }, []);
 
   const dynamicHighlights = [
-    { icon: GraduationCap, val: passRateVal, suffix: '%', label: 'Pass Rate ya NECTA', color: '#00FF41' },
+    { icon: GraduationCap, val: passRateVal, suffix: passRateVal > 0 ? '%' : '', label: 'Pass Rate ya NECTA', color: '#00FF41' },
     { icon: Award, val: 5, suffix: '', label: 'Idara za Masomo', color: '#00FF41' },
-    { icon: Users, val: studentTotal, suffix: '+', label: 'Wanafunzi Wote', color: '#00FF41' },
-    { icon: Star, val: foundedYears, suffix: '+', label: 'Miaka ya Uzoefu', color: '#00FF41' },
+    { icon: Users, val: studentTotal, suffix: studentTotal > 0 ? '+' : '', label: 'Wanafunzi Wote', color: '#00FF41' },
+    { icon: Star, val: foundedYears, suffix: '', label: 'Miaka ya Uzoefu', color: '#00FF41' },
   ];
 
   const activeDept = DEPARTMENTS.find(d => d.key === openDept);

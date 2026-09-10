@@ -55,10 +55,10 @@ export default function StatsSection() {
   }, []);
 
   const stats = [
-    { value: statsData.studentTotal, suffix: '+', label: 'Wanafunzi Wanaosoma', icon: Users, desc: 'Jumla ya wanafunzi' },
-    { value: statsData.teacherCount, suffix: '', label: 'Walimu Wataalamu', icon: Star, desc: 'Wasomi waliofunzwa' },
+    { value: statsData.studentTotal, suffix: statsData.studentTotal > 0 ? '+' : '', label: 'Wanafunzi Wanaosoma', icon: Users, desc: 'Jumla ya wanafunzi' },
+    { value: statsData.teacherCount, suffix: statsData.teacherCount > 0 ? '+' : '', label: 'Walimu Wataalamu', icon: Star, desc: 'Wasomi waliofunzwa' },
     { value: statsData.years, suffix: '', label: 'Miaka ya Uzoefu', icon: Clock, desc: 'Tangu tulipoanzishwa' },
-    { value: statsData.graduated, suffix: '+', label: 'Wahitimu Waliofaulu', icon: GraduationCap, desc: 'Waliohitimu kwa ufaulu' },
+    { value: statsData.graduated, suffix: statsData.graduated > 0 ? '+' : '', label: 'Wahitimu Waliofaulu', icon: GraduationCap, desc: 'Waliohitimu kwa ufaulu' },
   ];
 
   return (

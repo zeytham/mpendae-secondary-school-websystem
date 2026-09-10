@@ -7,6 +7,7 @@ import Autoplay from 'embla-carousel-autoplay';
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ChevronLeft, ChevronRight, GraduationCap, Users, Award, MapPin } from 'lucide-react';
+import { studentsApi, settingsApi } from '@/lib/api';
 
 interface HeroProps { images: string[]; }
 
@@ -32,10 +33,28 @@ export default function Hero({ images }: HeroProps) {
   const [mounted, setMounted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [scrollY, setScrollY]  = useState(0);
+  const [dynamicStats, setDynamicStats] = useState({ studentTotal: 0, graduated: 0, nectaPassRate: 'NECTA Wabora' });
   const hasImg = images.length > 0;
   const progRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    let isMounted = true;
+    Promise.all([
+      studentsApi.getStats().catch(() => ({ data: {} })),
+      settingsApi.getSettings().catch(() => ({ data: {} })),
+    ]).then(([studRes, settRes]) => {
+      if (!isMounted) return;
+      const sData = studRes.data || {};
+      const setProp = settRes.data || {};
+      setDynamicStats({
+        studentTotal: sData.total ?? 0,
+        graduated: sData.graduated ?? 0,
+        nectaPassRate: setProp.nectaPassRate ? `${setProp.nectaPassRate}% Pass Rate` : 'NECTA Wabora',
+      });
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   /* Parallax */
   useEffect(() => {
@@ -203,9 +222,9 @@ export default function Hero({ images }: HeroProps) {
             style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}
           >
             {[
-              { Icon: GraduationCap, label: '1000+ Wahitimu' },
-              { Icon: Users,         label: '200+ Wanafunzi' },
-              { Icon: Award,         label: 'NECTA Wabora' },
+              { Icon: GraduationCap, label: dynamicStats.graduated > 0 ? `${dynamicStats.graduated} Wahitimu` : 'Wahitimu Waliofaulu' },
+              { Icon: Users,         label: dynamicStats.studentTotal > 0 ? `${dynamicStats.studentTotal} Wanafunzi` : 'Wanafunzi Wanaosoma' },
+              { Icon: Award,         label: dynamicStats.nectaPassRate },
             ].map(({ Icon, label }) => (
               <div key={label} style={{
                 display: 'inline-flex', alignItems: 'center', gap: '.5rem',
@@ -222,7 +241,11 @@ export default function Hero({ images }: HeroProps) {
 
         {/* Floating badges — desktop only */}
         <div style={{ position: 'absolute', right: '2rem', top: '50%', transform: 'translateY(-50%)', display: 'none', flexDirection: 'column', gap: '1rem', zIndex: 20 }} className="hero-float-badges">
-          {FLOAT_BADGES.map(({ icon: Icon, label, sub }, i) => (
+          {[
+            { icon: Award, label: dynamicStats.nectaPassRate, sub: 'Wahitimu bora' },
+            { icon: GraduationCap, label: dynamicStats.graduated > 0 ? `${dynamicStats.graduated} Wahitimu` : 'Wahitimu Waliofaulu', sub: 'Tangu 1990' },
+            { icon: MapPin, label: 'Zanzibar', sub: 'Tanzania' },
+          ].map(({ icon: Icon, label, sub }, i) => (
             <motion.div
               key={label}
               initial={{ opacity: 0, x: 20 }}

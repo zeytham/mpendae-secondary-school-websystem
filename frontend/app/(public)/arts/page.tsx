@@ -9,7 +9,7 @@ import {
   CheckCircle2, Play, Award, Sparkles, Quote,
   ArrowRight, Clock, Zap, ImageIcon,
 } from 'lucide-react';
-import { eventsApi, galleryApi, settingsApi } from '@/lib/api';
+import { eventsApi, galleryApi, settingsApi, studentsApi } from '@/lib/api';
 
 interface ApiEvent {
   _id: string;
@@ -97,6 +97,7 @@ export default function ArtsPage() {
   const [events, setEvents] = useState<ApiEvent[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [reelUrl, setReelUrl] = useState<string>('');
+  const [studentTotal, setStudentTotal] = useState<number>(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [loadingGallery, setLoadingGallery] = useState(true);
 
@@ -118,6 +119,9 @@ export default function ArtsPage() {
       .finally(() => setLoadingGallery(false));
     settingsApi.getSettings()
       .then(r => { if (r.data?.artsReelUrl) setReelUrl(r.data.artsReelUrl); })
+      .catch(() => {});
+    studentsApi.getStats()
+      .then(r => { if (r.data?.total !== undefined) setStudentTotal(r.data.total); })
       .catch(() => {});
   }, []);
 
@@ -201,7 +205,7 @@ export default function ArtsPage() {
 
                 <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.65 }}
                   style={{ display: 'flex', gap: '2.5rem', flexWrap: 'wrap' }}>
-                  {[{ val: 5, s: '+', label: 'Programu' }, { val: 435, s: '+', label: 'Wanafunzi' }, { val: 43, s: '+', label: 'Tuzo za Sanaa' }].map(({ val, s, label }) => (
+                  {[{ val: 5, s: '', label: 'Programu' }, { val: studentTotal, s: studentTotal > 0 ? '+' : '', label: 'Wanafunzi Wote' }, { val: 43, s: '+', label: 'Tuzo za Sanaa' }].map(({ val, s, label }) => (
                     <div key={label}>
                       <p style={{ fontFamily: 'var(--f-display)', fontSize: '2.2rem', fontWeight: 900, color: '#fff', fontStyle: 'italic', margin: 0, lineHeight: 1 }}>
                         <AnimNum target={val} suffix={s} />
