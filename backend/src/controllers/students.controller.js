@@ -223,10 +223,12 @@ const updateStudentCounts = async (req, res, next) => {
       settings = await prisma.schoolSettings.create({ data: {} });
     }
 
+    const MAX_INT = 2147483647; // PostgreSQL 32-bit INT4 max limit
     const parseNum = (val, currentVal) => {
       if (val === undefined || val === null) return currentVal;
       const num = parseInt(val, 10);
-      return isNaN(num) ? currentVal : Math.max(0, num);
+      if (isNaN(num)) return currentVal;
+      return Math.min(MAX_INT, Math.max(0, num));
     };
 
     const b = req.body || {};

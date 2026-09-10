@@ -8,6 +8,9 @@ const errorHandler = (err, req, res, next) => {
   if (err.code === 'P2025') {
     return res.status(404).json({ error: 'Record not found.' });
   }
+  if (err.message && (err.message.includes('ConversionError') || err.message.includes('INT4'))) {
+    return res.status(400).json({ error: 'Idadi uliyoingiza ni kubwa mno kuliko uwezo wa mfumo. Tafadhali weka nambari sahihi.' });
+  }
 
   // Multer errors
   if (err.code === 'LIMIT_FILE_SIZE') {

@@ -127,12 +127,16 @@ export default function StudentStatsAdminPage() {
     ].filter((d) => d.value > 0);
   }, [graduateCounts]);
 
+  const MAX_STUDENT_COUNT = 100000;
+
   const handleFormCountChange = (key: keyof typeof formCounts, val: number) => {
-    setFormCounts((prev) => ({ ...prev, [key]: Math.max(0, val) }));
+    const clamped = Math.min(MAX_STUDENT_COUNT, Math.max(0, val));
+    setFormCounts((prev) => ({ ...prev, [key]: clamped }));
   };
 
   const handleGradCountChange = (key: keyof typeof graduateCounts, val: number) => {
-    setGraduateCounts((prev) => ({ ...prev, [key]: Math.max(0, val) }));
+    const clamped = Math.min(MAX_STUDENT_COUNT, Math.max(0, val));
+    setGraduateCounts((prev) => ({ ...prev, [key]: clamped }));
   };
 
   const handleSave = async () => {
